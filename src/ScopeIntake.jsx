@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Video, MapPin, Lock, Wrench, Droplet, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
+import { supabase } from './supabaseClient.js';
 
 // ---- Question data ----
 const STEPS = [
@@ -126,6 +127,29 @@ export default function ScopeIntake() {
       const parsed = await response.json();
       if (parsed.error) throw new Error(parsed.error);
       setAiBrief(parsed);
+
+      // Save the full job (customer answers + AI brief) to the database.
+      // If this fails, we don't block the customer — they've done their part.
+      try {
+        await supabase.from('jobs').insert({
+          context: answers.context || null,
+          fixture: answers.fixture || null,
+          pipe: answers.pipe || null,
+          access: answers.access || null,
+          cutting: answers.cutting || null,
+          preference: answers.preference || null,
+          leak_detection: answers.leak_detection || null,
+          ai_job_type: parsed.jobType || null,
+          ai_urgency: parsed.urgency || null,
+          ai_materials: parsed.likelyMaterials || [],
+          ai_summary: parsed.briefSummary || null,
+          ai_watch_out: parsed.watchOutFor || null,
+          status: 'new',
+        });
+      } catch (dbErr) {
+        // Saving failed silently for the customer; logged for us.
+        console.error('Could not save job to database:', dbErr);
+      }
     } catch (err) {
       setAiBrief({
         jobType: 'Unable to generate brief',
