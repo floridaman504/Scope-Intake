@@ -17,25 +17,10 @@ export default function Join() {
     setLoading(true);
 
     try {
-      // 1. Check the invite code is valid and unused
-      const { data: invite, error: inviteErr } = await supabase
-        .from('invite_codes')
-        .select('id, role, used_at')
-        .eq('code', code.trim())
-        .single();
-
-      if (inviteErr || !invite) {
-        setError('That invite code was not found.');
-        setLoading(false);
-        return;
-      }
-      if (invite.used_at) {
-        setError('That invite code has already been used.');
-        setLoading(false);
-        return;
-      }
-
-      // 2. Create the login (email + password)
+      // 1. Create the login (email + password). The invite code itself is
+      // no longer checked from the client -- invite_codes has no client
+      // read/write access under RLS anymore, so there's nothing to check
+      // here. Validation happens server-side in step 2.
       const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
         email,
         password,
@@ -46,31 +31,30 @@ export default function Join() {
         return;
       }
 
-      const userId = signUpData.user?.id;
-      if (!userId) {
-        setError('Could not create account. Please try again.');
+      if (!signUpData.session) {
+        // Email confirmation is required before Supabase issues a session.
+        // Without a session there's no authenticated user yet, so the
+        // invite code can't be redeemed until they confirm and sign in.
+        setError('Account created. Check your email to confirm it, then sign in to finish joining with your invite code.');
         setLoading(false);
         return;
       }
 
-      // 3. Create their employee record with the role from the invite code
-      const { error: empErr } = await supabase.from('employees').insert({
-        user_id: userId,
-        email,
-        full_name: fullName,
-        role: invite.role,
+      // 2. Redeem the invite code through the server-validated function.
+      // This checks the code is real and unused, assigns the role from
+      // the invite (never a role the client sends), and marks the code
+      // used -- all atomically, on the server, in one transaction.
+      const { error: redeemErr } = await supabase.rpc('redeem_invite_code', {
+        invite_code: code.trim(),
+        employee_full_name: fullName,
+        employee_email: email,
       });
-      if (empErr) {
-        setError('Account created, but role setup failed. Contact your admin.');
+
+      if (redeemErr) {
+        setError(redeemErr.message || 'That invite code is invalid or already used.');
         setLoading(false);
         return;
       }
-
-      // 4. Mark the invite code as used
-      await supabase
-        .from('invite_codes')
-        .update({ used_by: userId, used_at: new Date().toISOString() })
-        .eq('id', invite.id);
 
       navigate('/dashboard');
     } catch (err) {
