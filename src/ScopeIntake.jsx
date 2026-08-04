@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Video, MapPin, Lock, Wrench, Droplet, PawPrint, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
 import { supabase } from './supabaseClient.js';
 
@@ -128,9 +128,19 @@ export default function ScopeIntake() {
   const [aiBrief, setAiBrief] = useState(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
+  const headingRef = useRef(null);
 
   const page = PAGES[step];
   const progress = ((step + 1) / TOTAL) * 100;
+
+  // Move focus to the new page's heading whenever the step changes. Sighted
+  // users see the page swap via the fade-in animation, but screen reader
+  // users get no equivalent signal unless focus actually moves -- without
+  // this, someone using a screen reader would hit "Next" and hear nothing
+  // change, with no idea the form advanced.
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step]);
 
   const setAnswer = (fieldId, val) => setAnswers((a) => ({ ...a, [fieldId]: val }));
 
@@ -245,7 +255,15 @@ export default function ScopeIntake() {
       </header>
 
       {/* Progress conduit */}
-      <div style={{ height: 2, backgroundColor: '#1E1E1E', position: 'relative' }}>
+      <div
+        role="progressbar"
+        aria-label="Form progress"
+        aria-valuenow={step + 1}
+        aria-valuemin={1}
+        aria-valuemax={TOTAL}
+        aria-valuetext={`Page ${step + 1} of ${TOTAL}`}
+        style={{ height: 2, backgroundColor: '#1E1E1E', position: 'relative' }}
+      >
         <div
           style={{
             height: 2,
@@ -272,8 +290,13 @@ export default function ScopeIntake() {
           </div>
 
           <div className="flex items-start gap-3 mb-1">
-            <page.icon size={24} style={{ color: '#E8BD3A' }} className="mt-1 shrink-0" strokeWidth={2} />
-            <h1 style={{ color: '#FFFFFF', fontFamily: 'Oswald, sans-serif' }} className="text-[28px] leading-tight font-bold">
+            <page.icon size={24} style={{ color: '#E8BD3A' }} className="mt-1 shrink-0" aria-hidden="true" strokeWidth={2} />
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              style={{ color: '#FFFFFF', fontFamily: 'Oswald, sans-serif' }}
+              className="text-[28px] leading-tight font-bold outline-none"
+            >
               {page.title}
             </h1>
           </div>
@@ -283,52 +306,67 @@ export default function ScopeIntake() {
             {page.fields.map((field) => (
               <div key={field.id}>
                 <div className="flex items-center gap-2 mb-2.5">
-                  {field.icon && <field.icon size={16} style={{ color: '#9A9A9A' }} />}
-                  <label style={{ color: '#D8D8D8' }} className="text-[15px] font-semibold">
+                  {field.icon && <field.icon size={16} style={{ color: '#9A9A9A' }} aria-hidden="true" />}
+                  <label
+                    id={`${field.id}-label`}
+                    htmlFor={field.type === 'textarea' || field.type === 'text' ? field.id : undefined}
+                    style={{ color: '#D8D8D8' }}
+                    className="text-[15px] font-semibold"
+                  >
                     {field.label}
+                    {field.required && <span aria-hidden="true"> *</span>}
                   </label>
                 </div>
 
                 {field.type === 'textarea' && (
                   <textarea
+                    id={field.id}
+                    name={field.id}
                     value={answers[field.id] || ''}
                     onChange={(e) => setAnswer(field.id, e.target.value)}
                     placeholder={field.placeholder}
                     rows={3}
+                    required={!!field.required}
+                    aria-required={!!field.required}
                     style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors resize-none text-base shadow-inner"
+                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors resize-none text-base shadow-inner focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
                   />
                 )}
 
                 {field.type === 'text' && (
                   <input
+                    id={field.id}
+                    name={field.id}
                     type="text"
                     value={answers[field.id] || ''}
                     onChange={(e) => setAnswer(field.id, e.target.value)}
                     placeholder={field.placeholder}
                     style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors text-base shadow-inner"
+                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors text-base shadow-inner focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
                   />
                 )}
 
                 {field.type === 'choice' && (
-                  <div className="flex flex-col gap-2">
+                  <div role="radiogroup" aria-labelledby={`${field.id}-label`} className="flex flex-col gap-2">
                     {field.options.map((opt) => {
                       const isSelected = answers[field.id] === opt;
                       return (
                         <button
                           key={opt}
+                          type="button"
+                          role="radio"
+                          aria-checked={isSelected}
                           onClick={() => setAnswer(field.id, opt)}
                           style={{
                             backgroundColor: isSelected ? '#26200A' : '#1C1C1C',
                             border: `2px solid ${isSelected ? '#E8BD3A' : '#454545'}`,
                             color: isSelected ? '#FFFFFF' : '#E0E0E0',
                           }}
-                          className="text-left px-4 py-3.5 rounded-lg transition-all text-base"
+                          className="text-left px-4 py-3.5 rounded-lg transition-all text-base focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
                         >
                           <span className="flex items-center justify-between">
                             {opt}
-                            {isSelected && <Check size={18} style={{ color: '#E8BD3A' }} />}
+                            {isSelected && <Check size={18} style={{ color: '#E8BD3A' }} aria-hidden="true" />}
                           </span>
                         </button>
                       );
@@ -345,14 +383,17 @@ export default function ScopeIntake() {
                       multiple
                       capture="environment"
                       onChange={handleFile}
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="hidden"
                     />
                     <button
+                      type="button"
                       onClick={() => fileInputRef.current?.click()}
                       style={{ backgroundColor: '#161616', border: '2px dashed #5A5A5A' }}
-                      className="w-full rounded-lg py-6 flex flex-col items-center gap-2 transition-colors group"
+                      className="w-full rounded-lg py-6 flex flex-col items-center gap-2 transition-colors group focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
                     >
-                      <div style={{ color: '#E8BD3A' }} className="flex gap-3">
+                      <div style={{ color: '#E8BD3A' }} className="flex gap-3" aria-hidden="true">
                         <Camera size={24} strokeWidth={1.75} />
                         <Video size={24} strokeWidth={1.75} />
                       </div>
@@ -366,18 +407,20 @@ export default function ScopeIntake() {
                         {media.map((m, i) => (
                           <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
                             {m.type === 'image' ? (
-                              <img src={m.url} alt="" className="w-full h-full object-cover" />
+                              <img src={m.url} alt={`Attachment ${i + 1}: ${m.name}`} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
-                                <Video size={20} style={{ color: '#C9A227' }} />
+                                <Video size={20} style={{ color: '#C9A227' }} aria-hidden="true" />
                               </div>
                             )}
                             <button
+                              type="button"
                               onClick={() => removeMedia(i)}
+                              aria-label={`Remove ${m.name}`}
                               style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
-                              className="rounded-full p-1"
+                              className="rounded-full p-1 focus:ring-2 focus:ring-[#E8BD3A]"
                             >
-                              <X size={12} style={{ color: '#FFFFFF' }} />
+                              <X size={12} style={{ color: '#FFFFFF' }} aria-hidden="true" />
                             </button>
                           </div>
                         ))}
@@ -394,26 +437,30 @@ export default function ScopeIntake() {
       {/* Nav */}
       <footer style={{ borderTop: '1px solid #1E1E1E' }} className="px-6 py-5 flex items-center justify-between">
         <button
+          type="button"
           onClick={back}
           disabled={step === 0}
+          aria-label="Back to previous page"
           style={{ color: step === 0 ? '#4A4A4A' : '#D0D0D0', cursor: step === 0 ? 'not-allowed' : 'pointer' }}
-          className="flex items-center gap-1 text-[15px] font-medium px-4 py-2 rounded-md transition-colors"
+          className="flex items-center gap-1 text-[15px] font-medium px-4 py-2 rounded-md transition-colors focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
         >
-          <ChevronLeft size={18} /> Back
+          <ChevronLeft size={18} aria-hidden="true" /> Back
         </button>
 
         <button
+          type="button"
           onClick={next}
           disabled={!canAdvance()}
+          aria-label={step === TOTAL - 1 ? 'Submit job request' : 'Next page'}
           style={{
             backgroundColor: canAdvance() ? '#E8BD3A' : '#222222',
             color: canAdvance() ? '#0A0A0A' : '#5A5A5A',
             cursor: canAdvance() ? 'pointer' : 'not-allowed',
           }}
-          className="flex items-center gap-1.5 text-[15px] font-semibold px-5 py-3 rounded-md transition-all"
+          className="flex items-center gap-1.5 text-[15px] font-semibold px-5 py-3 rounded-md transition-all focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
         >
           {step === TOTAL - 1 ? 'Submit job request' : 'Next'}
-          <ChevronRight size={18} />
+          <ChevronRight size={18} aria-hidden="true" />
         </button>
       </footer>
 
@@ -431,6 +478,16 @@ export default function ScopeIntake() {
 }
 
 function ResultScreen({ loading, brief, answers, media, onReset }) {
+  const resultHeadingRef = useRef(null);
+
+  // Same reasoning as the intake pages: once the AI brief finishes loading,
+  // the whole screen swaps from a spinner to the result. Move focus to the
+  // result heading so screen reader users hear that it's ready instead of
+  // silence.
+  useEffect(() => {
+    if (!loading) resultHeadingRef.current?.focus();
+  }, [loading]);
+
   return (
     <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }} className="font-sans">
       <header style={{ borderBottom: '1px solid #2A2A2A' }} className="flex items-center justify-between px-6 py-5">
@@ -442,18 +499,25 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
 
       <main className="max-w-md mx-auto px-6 py-10">
         {loading ? (
-          <div className="flex flex-col items-center gap-4 py-20">
-            <div style={{ border: '2px solid #2E2E2E', borderTopColor: '#C9A227' }} className="w-10 h-10 rounded-full animate-spin" />
+          <div role="status" className="flex flex-col items-center gap-4 py-20">
+            <div style={{ border: '2px solid #2E2E2E', borderTopColor: '#C9A227' }} className="w-10 h-10 rounded-full animate-spin" aria-hidden="true" />
             <p style={{ color: '#9A9A9A' }} className="text-sm">Reviewing the job submission...</p>
           </div>
         ) : (
           <>
             <div style={{ color: '#C9A227' }} className="text-xs tracking-[0.2em] mb-2 font-medium">JOB BRIEF — READY FOR DISPATCH</div>
-            <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-6">{brief?.jobType}</h1>
+            <h1
+              ref={resultHeadingRef}
+              tabIndex={-1}
+              style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }}
+              className="text-2xl font-bold mb-6 outline-none"
+            >
+              {brief?.jobType}
+            </h1>
 
             <div className="flex items-center gap-2 mb-6">
               <UrgencyBadge level={brief?.urgency} />
-              <span style={{ color: '#6A6A6A' }} className="text-xs">{media.length} attachment{media.length !== 1 ? 's' : ''}</span>
+              <span style={{ color: '#8A8A8A' }} className="text-xs">{media.length} attachment{media.length !== 1 ? 's' : ''}</span>
             </div>
 
             <Section label="Summary">
@@ -482,10 +546,10 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
                   {media.map((m, i) => (
                     <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E' }} className="aspect-square rounded-md overflow-hidden">
                       {m.type === 'image' ? (
-                        <img src={m.url} alt="" className="w-full h-full object-cover" />
+                        <img src={m.url} alt={`Attachment ${i + 1}: ${m.name}`} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <Video size={20} style={{ color: '#C9A227' }} />
+                          <Video size={20} style={{ color: '#C9A227' }} aria-hidden="true" />
                         </div>
                       )}
                     </div>
@@ -506,9 +570,10 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
             </Section>
 
             <button
+              type="button"
               onClick={onReset}
               style={{ border: '1px solid #2E2E2E', color: '#C8C8C8', backgroundColor: 'transparent' }}
-              className="w-full mt-4 py-3 rounded-md text-sm transition-colors"
+              className="w-full mt-4 py-3 rounded-md text-sm transition-colors focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
             >
               Submit another job request
             </button>
@@ -527,7 +592,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
 function Section({ label, children }) {
   return (
     <div className="mb-6">
-      <div style={{ color: '#6A6A6A' }} className="text-[11px] tracking-[0.15em] mb-2 font-medium">{label.toUpperCase()}</div>
+      <div style={{ color: '#8A8A8A' }} className="text-[11px] tracking-[0.15em] mb-2 font-medium">{label.toUpperCase()}</div>
       {children}
     </div>
   );

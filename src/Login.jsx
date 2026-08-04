@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import { supabase } from './supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -55,30 +57,48 @@ export default function Login() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Email</label>
+            <label htmlFor="login-email" style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Email</label>
             <input
+              id="login-email"
+              name="email"
               type="email"
               required
+              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base"
+              className="w-full rounded-lg px-4 py-3 outline-none text-base focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
             />
           </div>
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base"
-            />
+            <label htmlFor="login-password" style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Password</label>
+            <div className="relative">
+              <input
+                id="login-password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
+                className="w-full rounded-lg px-4 py-3 pr-11 outline-none text-base focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                style={{ color: '#5A5A5A' }}
+                className="absolute right-0 top-0 h-full px-3 flex items-center rounded-r-lg focus:ring-2 focus:ring-[#E8BD3A] focus:ring-inset"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
           </div>
 
           {error && (
-            <p style={{ color: '#E07A6E' }} className="text-sm text-center">{error}</p>
+            <p role="alert" style={{ color: '#E07A6E' }} className="text-sm text-center">{error}</p>
           )}
 
           <button
@@ -91,9 +111,9 @@ export default function Login() {
           </button>
         </form>
 
-        <p style={{ color: '#6A6A6A' }} className="text-xs text-center mt-6">
+        <p style={{ color: '#8A8A8A' }} className="text-xs text-center mt-6">
           Have an invite code?{' '}
-          <Link to="/join" style={{ color: '#C9A227' }}>Create your account</Link>
+          <Link to="/join" style={{ color: '#C9A227' }} className="underline focus:ring-2 focus:ring-[#E8BD3A] rounded">Create your account</Link>
         </p>
       </div>
 
