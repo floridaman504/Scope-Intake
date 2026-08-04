@@ -2,6 +2,19 @@ import React, { useState, useRef } from 'react';
 import { Camera, Video, MapPin, Lock, Wrench, Droplet, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
 import { supabase } from './supabaseClient.js';
 
+// Resolves which company this intake form belongs to from the subdomain,
+// e.g. acme-plumbing.scopwell.com -> "acme-plumbing". Falls back to the
+// shared "demo" company for local dev and the bare apex domain, where
+// there's no real subdomain to read.
+function getCompanySubdomain() {
+  const host = window.location.hostname;
+  const parts = host.split('.');
+  const isLocal = host === 'localhost' || host.startsWith('127.0.0.1') || host.endsWith('.local');
+  // scopwell.com (2 parts) or www.scopwell.com has no real tenant subdomain.
+  if (isLocal || parts.length < 3) return 'demo';
+  return parts[0];
+}
+
 // ---- Question data ----
 const STEPS = [
   {
@@ -130,22 +143,30 @@ export default function ScopeIntake() {
 
       // Save the full job (customer answers + AI brief) to the database.
       // If this fails, we don't block the customer — they've done their part.
+      //
+      // This goes through the submit_public_job() RPC instead of a raw
+      // insert. The RPC resolves the company from the subdomain on the
+      // SERVER, so the browser can never spoof a different company's id
+      // by tampering with the request — it only ever sends the subdomain
+      // string, which is public info anyway (it's already in the URL).
       try {
-        await supabase.from('jobs').insert({
-          context: answers.context || null,
-          fixture: answers.fixture || null,
-          pipe: answers.pipe || null,
-          access: answers.access || null,
-          cutting: answers.cutting || null,
-          preference: answers.preference || null,
-          leak_detection: answers.leak_detection || null,
-          ai_job_type: parsed.jobType || null,
-          ai_urgency: parsed.urgency || null,
-          ai_materials: parsed.likelyMaterials || [],
-          ai_summary: parsed.briefSummary || null,
-          ai_watch_out: parsed.watchOutFor || null,
-          status: 'new',
+        const subdomain = getCompanySubdomain();
+        const { error: rpcError } = await supabase.rpc('submit_public_job', {
+          p_subdomain: subdomain,
+          p_context: answers.context || null,
+          p_fixture: answers.fixture || null,
+          p_pipe: answers.pipe || null,
+          p_access: answers.access || null,
+          p_cutting: answers.cutting || null,
+          p_preference: answers.preference || null,
+          p_leak_detection: answers.leak_detection || null,
+          p_ai_job_type: parsed.jobType || null,
+          p_ai_urgency: parsed.urgency || null,
+          p_ai_materials: parsed.likelyMaterials || [],
+          p_ai_summary: parsed.briefSummary || null,
+          p_ai_watch_out: parsed.watchOutFor || null,
         });
+        if (rpcError) throw rpcError;
       } catch (dbErr) {
         // Saving failed silently for the customer; logged for us.
         console.error('Could not save job to database:', dbErr);
@@ -175,7 +196,7 @@ export default function ScopeIntake() {
       <header style={{ borderBottom: '1px solid #2A2A2A' }} className="flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
           <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
-          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-lg font-bold tracking-[0.15em]">SCOPE</span>
+          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-lg font-bold tracking-[0.15em]">SCOPWELL</span>
         </div>
         <span style={{ color: '#7A7A7A' }} className="text-xs tracking-wide">CLARITY BEFORE THE CALL</span>
       </header>
@@ -364,7 +385,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
       <header style={{ borderBottom: '1px solid #2A2A2A' }} className="flex items-center justify-between px-6 py-5">
         <div className="flex items-center gap-2">
           <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
-          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-lg font-bold tracking-[0.15em]">SCOPE</span>
+          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-lg font-bold tracking-[0.15em]">SCOPWELL</span>
         </div>
       </header>
 

@@ -70,7 +70,7 @@ export default function Join() {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-8 justify-center">
           <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
-          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-xl font-bold tracking-[0.15em]">SCOPE</span>
+          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-xl font-bold tracking-[0.15em]">SCOPWELL</span>
         </div>
 
         <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1 text-center">
@@ -88,7 +88,7 @@ export default function Join() {
               required
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="e.g. SCOPE-4X7K"
+              placeholder="e.g. SCOPWELL-4X7K"
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
               className="w-full rounded-lg px-4 py-3 outline-none text-base placeholder-[#6A6A6A]"
             />

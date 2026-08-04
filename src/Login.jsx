@@ -28,7 +28,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-8 justify-center">
           <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
-          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-xl font-bold tracking-[0.15em]">SCOPE</span>
+          <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-xl font-bold tracking-[0.15em]">SCOPWELL</span>
         </div>
 
         <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1 text-center">

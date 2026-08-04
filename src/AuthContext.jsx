@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [employee, setEmployee] = useState(null); // { role, full_name, email }
+  const [employee, setEmployee] = useState(null); // { role, full_name, email, company_id }
   const [loading, setLoading] = useState(true);
 
   const loadEmployee = async (userId) => {
@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     }
     const { data, error } = await supabase
       .from('employees')
-      .select('role, full_name, email')
+      .select('role, full_name, email, company_id')
       .eq('user_id', userId)
       .single();
     if (!error && data) {
