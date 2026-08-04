@@ -30,6 +30,42 @@ function getCompanySubdomain() {
 const PAGES = [
   {
     icon: Wrench,
+    title: "Who are we helping?",
+    sub: "So we know who to call and where to send someone.",
+    fields: [
+      {
+        id: 'customer_name',
+        label: 'Your name',
+        type: 'text',
+        inputType: 'text',
+        autoComplete: 'name',
+        required: true,
+        placeholder: 'e.g. "Jamie Rodriguez"',
+        excludeFromAiSummary: true,
+      },
+      {
+        id: 'customer_phone',
+        label: 'Best phone number',
+        type: 'text',
+        inputType: 'tel',
+        autoComplete: 'tel',
+        required: true,
+        placeholder: 'e.g. "(555) 123-4567"',
+        excludeFromAiSummary: true,
+      },
+      {
+        id: 'customer_email',
+        label: 'Email (optional)',
+        type: 'text',
+        inputType: 'email',
+        autoComplete: 'email',
+        placeholder: 'e.g. "jamie@email.com"',
+        excludeFromAiSummary: true,
+      },
+    ],
+  },
+  {
+    icon: Wrench,
     title: "What's going on?",
     sub: 'Give us the short version, and a photo or video if you can.',
     fields: [
@@ -176,8 +212,12 @@ export default function ScopeIntake() {
     setLoading(true);
     try {
       const subdomain = getCompanySubdomain();
+      // Contact fields (name/phone/email) are excluded here on purpose --
+      // the AI's job is to summarize the plumbing problem, not to handle
+      // customer PII. They're stored directly via submit_public_job()
+      // below and never sent to Anthropic.
       const summary = PAGES.flatMap((p) => p.fields)
-        .filter((f) => f.type !== 'media')
+        .filter((f) => f.type !== 'media' && !f.excludeFromAiSummary)
         .map((f) => `${f.label}: ${answers[f.id] || 'Not provided'}`)
         .join('\n');
 
@@ -206,6 +246,9 @@ export default function ScopeIntake() {
       try {
         const { error: rpcError } = await supabase.rpc('submit_public_job', {
           p_subdomain: subdomain,
+          p_customer_name: answers.customer_name || null,
+          p_customer_phone: answers.customer_phone || null,
+          p_customer_email: answers.customer_email || null,
           p_context: answers.context || null,
           p_fixture: answers.fixture || null,
           p_pipe: answers.pipe || null,
@@ -338,7 +381,10 @@ export default function ScopeIntake() {
                   <input
                     id={field.id}
                     name={field.id}
-                    type="text"
+                    type={field.inputType || 'text'}
+                    autoComplete={field.autoComplete}
+                    required={!!field.required}
+                    aria-required={!!field.required}
                     value={answers[field.id] || ''}
                     onChange={(e) => setAnswer(field.id, e.target.value)}
                     placeholder={field.placeholder}
@@ -511,10 +557,17 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
               ref={resultHeadingRef}
               tabIndex={-1}
               style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }}
-              className="text-2xl font-bold mb-6 outline-none"
+              className="text-2xl font-bold mb-2 outline-none"
             >
               {brief?.jobType}
             </h1>
+
+            {(answers.customer_name || answers.customer_phone) && (
+              <p style={{ color: '#9A9A9A' }} className="text-sm mb-6">
+                We'll reach out to <span style={{ color: '#D8D8D8' }}>{answers.customer_name || 'you'}</span>
+                {answers.customer_phone ? <> at <span style={{ color: '#D8D8D8' }}>{answers.customer_phone}</span></> : null}.
+              </p>
+            )}
 
             <div className="flex items-center gap-2 mb-6">
               <UrgencyBadge level={brief?.urgency} />
