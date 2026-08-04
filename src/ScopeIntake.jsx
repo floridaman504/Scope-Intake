@@ -8,10 +8,16 @@ import { supabase } from './supabaseClient.js';
 // there's no real subdomain to read.
 function getCompanySubdomain() {
   const host = window.location.hostname;
+  // Only *.scopwell.com hosts carry a real tenant subdomain. Everything
+  // else -- localhost, the bare/www apex, and Vercel preview URLs like
+  // scope-intake-git-scopwell-preview-floridaman504.vercel.app (which
+  // also happen to have 3 dot-separated parts, so a plain "parts.length"
+  // check misreads them as a tenant subdomain and 400s on submit) --
+  // falls back to the shared "demo" company.
+  if (!host.endsWith('.scopwell.com')) return 'demo';
   const parts = host.split('.');
-  const isLocal = host === 'localhost' || host.startsWith('127.0.0.1') || host.endsWith('.local');
-  // scopwell.com (2 parts) or www.scopwell.com has no real tenant subdomain.
-  if (isLocal || parts.length < 3) return 'demo';
+  // www.scopwell.com or scopwell.com itself: still no real tenant.
+  if (parts.length <= 2 || parts[0] === 'www') return 'demo';
   return parts[0];
 }
 
