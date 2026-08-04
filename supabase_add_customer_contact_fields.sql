@@ -6,6 +6,12 @@
 -- Contact PII is intentionally NOT sent to the AI review endpoint
 -- (see api/review-job.js / ScopeIntake.jsx's excludeFromAiSummary
 -- field flag) -- it's stored directly here instead.
+--
+-- NOTE: jobs.ai_materials is a `json` column (set by an earlier
+-- migration), not `text[]`. p_ai_materials arrives here as text[], so
+-- it's cast with to_json() before insert -- passing it straight
+-- through raises "column ai_materials is of type json but expression
+-- is of type text[]" (42804) and silently breaks every submission.
 
 alter table jobs add column if not exists customer_name text;
 alter table jobs add column if not exists customer_phone text;
@@ -57,7 +63,7 @@ begin
     v_company_id, p_customer_name, p_customer_phone, p_customer_email,
     p_context, p_fixture, p_pipe, p_access, p_cutting, p_preference,
     p_leak_detection, p_pets, p_ai_job_type, p_ai_urgency,
-    p_ai_materials, p_ai_summary, p_ai_watch_out, 'new'
+    to_json(p_ai_materials), p_ai_summary, p_ai_watch_out, 'new'
   )
   returning * into v_job;
 
