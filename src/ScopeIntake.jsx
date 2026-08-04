@@ -21,6 +21,22 @@ function getCompanySubdomain() {
   return parts[0];
 }
 
+// Client-side media limits. The Storage bucket also hard-enforces a
+// 50MB-per-file cap and an allowed-mime-type list server-side (see
+// supabase_add_media_storage.sql) -- these just give the customer a fast,
+// friendly error instead of a failed upload after they've already filled
+// out the whole form.
+const MAX_MEDIA_FILES = 6;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024; // 50MB
+
+// Storage object paths can't safely contain arbitrary filename characters
+// (spaces, unicode, etc. cause issues with some clients/CDNs), so strip
+// down to a safe subset before using the name in a path.
+function sanitizeFilename(name) {
+  return name.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(-80);
+}
+
 // ---- Question data ----
 // Grouped into a handful of pages (2-3 related fields each) instead of one
 // full-screen question per field. A lot of customers filling this out are
@@ -166,9 +182,11 @@ export default function ScopeIntake() {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [media, setMedia] = useState([]);
+  const [mediaError, setMediaError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [aiBrief, setAiBrief] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Reviewing the job submission...');
   const fileInputRef = useRef(null);
   const headingRef = useRef(null);
 
@@ -203,15 +221,47 @@ export default function ScopeIntake() {
 
   const handleFile = (e) => {
     const files = Array.from(e.target.files || []);
-    const mapped = files.map((f) => ({
-      name: f.name,
-      type: f.type.startsWith('video') ? 'video' : 'image',
-      url: URL.createObjectURL(f),
-    }));
-    setMedia((m) => [...m, ...mapped]);
+    // Reset the input value so picking the exact same file again later
+    // (e.g. after removing it) still fires onChange.
+    e.target.value = '';
+    if (files.length === 0) return;
+
+    setMediaError('');
+    setMedia((m) => {
+      const room = MAX_MEDIA_FILES - m.length;
+      if (room <= 0) {
+        setMediaError(`You can attach up to ${MAX_MEDIA_FILES} files.`);
+        return m;
+      }
+      const accepted = [];
+      const rejected = [];
+      for (const f of files.slice(0, room)) {
+        const isVideo = f.type.startsWith('video');
+        const limit = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+        if (f.size > limit) {
+          rejected.push(`${f.name} is too large (max ${isVideo ? '50MB' : '10MB'})`);
+          continue;
+        }
+        accepted.push({
+          name: f.name,
+          type: isVideo ? 'video' : 'image',
+          url: URL.createObjectURL(f),
+          file: f, // kept so handleSubmit can upload the actual bytes
+        });
+      }
+      if (files.length > room) {
+        rejected.push(`Only ${room} more file${room === 1 ? '' : 's'} can be added (max ${MAX_MEDIA_FILES} total)`);
+      }
+      if (rejected.length > 0) setMediaError(rejected.join('. '));
+      return [...m, ...accepted];
+    });
   };
 
-  const removeMedia = (idx) => setMedia((m) => m.filter((_, i) => i !== idx));
+  const removeMedia = (idx) => setMedia((m) => {
+    const target = m[idx];
+    if (target?.url) URL.revokeObjectURL(target.url);
+    return m.filter((_, i) => i !== idx);
+  });
 
   const handleSubmit = async () => {
     setSubmitted(true);
@@ -250,7 +300,7 @@ export default function ScopeIntake() {
       // by tampering with the request — it only ever sends the subdomain
       // string, which is public info anyway (it's already in the URL).
       try {
-        const { error: rpcError } = await supabase.rpc('submit_public_job', {
+        const { data: job, error: rpcError } = await supabase.rpc('submit_public_job', {
           p_subdomain: subdomain,
           p_customer_name: answers.customer_name || null,
           p_customer_phone: answers.customer_phone || null,
@@ -270,6 +320,36 @@ export default function ScopeIntake() {
           p_ai_watch_out: parsed.watchOutFor || null,
         });
         if (rpcError) throw rpcError;
+
+        // Upload attached photos/video now that we have a real job id to
+        // scope the Storage path to. This happens AFTER the job row
+        // exists (not before) because the Storage upload policy only
+        // allows writes into a path prefixed with an id that's already
+        // in the jobs table -- see supabase_add_media_storage.sql.
+        if (job?.id && media.length > 0) {
+          setLoadingMessage('Uploading photos...');
+          const uploaded = [];
+          for (const m of media) {
+            if (!m.file) continue;
+            const path = `${job.id}/${crypto.randomUUID()}-${sanitizeFilename(m.name)}`;
+            const { error: uploadErr } = await supabase.storage
+              .from('job-media')
+              .upload(path, m.file, { contentType: m.file.type, upsert: false });
+            if (uploadErr) {
+              console.error('Could not upload media file:', m.name, uploadErr);
+              continue;
+            }
+            uploaded.push({ path, type: m.type, name: m.name, size: m.file.size });
+          }
+          if (uploaded.length > 0) {
+            const { error: attachErr } = await supabase.rpc('attach_job_media', {
+              p_job_id: job.id,
+              p_subdomain: subdomain,
+              p_media: uploaded,
+            });
+            if (attachErr) console.error('Could not attach media to job:', attachErr);
+          }
+        }
       } catch (dbErr) {
         // Saving failed silently for the customer; logged for us.
         console.error('Could not save job to database:', dbErr);
@@ -288,8 +368,9 @@ export default function ScopeIntake() {
   };
 
   if (submitted) {
-    return <ResultScreen loading={loading} brief={aiBrief} answers={answers} media={media} onReset={() => {
-      setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null);
+    return <ResultScreen loading={loading} loadingMessage={loadingMessage} brief={aiBrief} answers={answers} media={media} onReset={() => {
+      setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setMediaError(''); setAiBrief(null);
+      setLoadingMessage('Reviewing the job submission...');
     }} />;
   }
 
@@ -443,7 +524,13 @@ export default function ScopeIntake() {
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      style={{ backgroundColor: '#161616', border: '2px dashed #5A5A5A' }}
+                      disabled={media.length >= MAX_MEDIA_FILES}
+                      style={{
+                        backgroundColor: '#161616',
+                        border: '2px dashed #5A5A5A',
+                        opacity: media.length >= MAX_MEDIA_FILES ? 0.5 : 1,
+                        cursor: media.length >= MAX_MEDIA_FILES ? 'not-allowed' : 'pointer',
+                      }}
                       className="w-full rounded-lg py-6 flex flex-col items-center gap-2 transition-colors group focus:ring-2 focus:ring-[#E8BD3A] focus:ring-offset-2 focus:ring-offset-[#0A0A0A]"
                     >
                       <div style={{ color: '#E8BD3A' }} className="flex gap-3" aria-hidden="true">
@@ -451,9 +538,15 @@ export default function ScopeIntake() {
                         <Video size={24} strokeWidth={1.75} />
                       </div>
                       <span style={{ color: '#D0D0D0' }} className="text-[15px] font-medium">
-                        Tap to add photos or video
+                        {media.length >= MAX_MEDIA_FILES ? `Max ${MAX_MEDIA_FILES} files attached` : 'Tap to add photos or video'}
                       </span>
                     </button>
+
+                    {mediaError && (
+                      <p role="alert" style={{ color: '#E27878' }} className="text-sm mt-2">
+                        {mediaError}
+                      </p>
+                    )}
 
                     {media.length > 0 && (
                       <div className="grid grid-cols-3 gap-2 mt-4">
@@ -530,7 +623,7 @@ export default function ScopeIntake() {
   );
 }
 
-function ResultScreen({ loading, brief, answers, media, onReset }) {
+function ResultScreen({ loading, loadingMessage, brief, answers, media, onReset }) {
   const resultHeadingRef = useRef(null);
 
   // Same reasoning as the intake pages: once the AI brief finishes loading,
@@ -554,7 +647,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
         {loading ? (
           <div role="status" className="flex flex-col items-center gap-4 py-20">
             <div style={{ border: '2px solid #2E2E2E', borderTopColor: '#C9A227' }} className="w-10 h-10 rounded-full animate-spin" aria-hidden="true" />
-            <p style={{ color: '#9A9A9A' }} className="text-sm">Reviewing the job submission...</p>
+            <p style={{ color: '#9A9A9A' }} className="text-sm">{loadingMessage || 'Reviewing the job submission...'}</p>
           </div>
         ) : (
           <>
