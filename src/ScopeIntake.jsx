@@ -175,6 +175,7 @@ export default function ScopeIntake() {
     setSubmitted(true);
     setLoading(true);
     try {
+      const subdomain = getCompanySubdomain();
       const summary = PAGES.flatMap((p) => p.fields)
         .filter((f) => f.type !== 'media')
         .map((f) => `${f.label}: ${answers[f.id] || 'Not provided'}`)
@@ -187,6 +188,7 @@ export default function ScopeIntake() {
           summary,
           mediaCount: media.length,
           mediaTypes: media.map((m) => m.type).join(', ') || 'none',
+          subdomain,
         }),
       });
       const parsed = await response.json();
@@ -202,7 +204,6 @@ export default function ScopeIntake() {
       // by tampering with the request — it only ever sends the subdomain
       // string, which is public info anyway (it's already in the URL).
       try {
-        const subdomain = getCompanySubdomain();
         const { error: rpcError } = await supabase.rpc('submit_public_job', {
           p_subdomain: subdomain,
           p_context: answers.context || null,
