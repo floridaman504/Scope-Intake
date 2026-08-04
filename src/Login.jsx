@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
+import { useAuth } from './AuthContext.jsx';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -8,6 +9,20 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { session } = useAuth();
+
+  // Navigate off of the shared AuthContext session, not the local
+  // signInWithPassword() result. AuthContext updates `session` asynchronously
+  // through its own onAuthStateChange listener, and ProtectedRoute reads
+  // session from that same context -- if we navigate right after
+  // signInWithPassword() resolves, there's a race where ProtectedRoute can
+  // render before AuthContext has caught up, see session=null, and bounce
+  // straight back to /login (with `replace`, so it doesn't self-correct).
+  // Waiting for `session` here guarantees ProtectedRoute never sees a stale
+  // value.
+  useEffect(() => {
+    if (session) navigate('/dashboard');
+  }, [session]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -17,9 +32,9 @@ export default function Login() {
     setLoading(false);
     if (error) {
       setError('Incorrect email or password.');
-    } else {
-      navigate('/dashboard');
     }
+    // No explicit navigate here -- the effect above handles it once
+    // AuthContext confirms the session.
   };
 
   return (

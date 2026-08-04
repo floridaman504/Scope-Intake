@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
+import { useAuth } from './AuthContext.jsx';
 
 export default function Join() {
   const [code, setCode] = useState('');
@@ -9,7 +10,17 @@ export default function Join() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [joined, setJoined] = useState(false);
   const navigate = useNavigate();
+  const { session, employee } = useAuth();
+
+  // Same reasoning as Login.jsx: wait for AuthContext to actually have both
+  // a session AND the employee row loaded (redeem_invite_code() just
+  // created it) before navigating, instead of racing AuthContext's own
+  // async state updates.
+  useEffect(() => {
+    if (joined && session && employee) navigate('/dashboard');
+  }, [joined, session, employee]);
 
   const handleJoin = async (e) => {
     e.preventDefault();
@@ -56,7 +67,7 @@ export default function Join() {
         return;
       }
 
-      navigate('/dashboard');
+      setJoined(true);
     } catch (err) {
       setError('Something went wrong. Please try again.');
     } finally {

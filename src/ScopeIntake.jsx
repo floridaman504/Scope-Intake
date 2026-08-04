@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Video, MapPin, Lock, Wrench, Droplet, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
+import { Camera, Video, MapPin, Lock, Wrench, Droplet, PawPrint, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
 import { supabase } from './supabaseClient.js';
 
 // Resolves which company this intake form belongs to from the subdomain,
@@ -16,73 +16,109 @@ function getCompanySubdomain() {
 }
 
 // ---- Question data ----
-const STEPS = [
+// Grouped into a handful of pages (2-3 related fields each) instead of one
+// full-screen question per field. A lot of customers filling this out are
+// elderly, and clicking "Next" 8+ times for one question at a time was a
+// real usability complaint. Grouping related questions together means
+// fewer taps to get through the whole thing, without turning it into one
+// giant overwhelming form either.
+//
+// Every field except the very first (context) is optional -- you can leave
+// any of them blank and still hit Next. That's intentional: it does the
+// same job a "Skip" button on every page would, without needing a visible
+// skip control cluttering each screen.
+const PAGES = [
   {
-    id: 'context',
     icon: Wrench,
     title: "What's going on?",
-    sub: 'Give us the short version. What did you notice, and when?',
-    type: 'textarea',
-    placeholder: 'e.g. "Water pooling under the kitchen sink since this morning"',
+    sub: 'Give us the short version, and a photo or video if you can.',
+    fields: [
+      {
+        id: 'context',
+        label: "What's going on?",
+        type: 'textarea',
+        required: true,
+        placeholder: 'e.g. "Water pooling under the kitchen sink since this morning"',
+      },
+      {
+        id: 'media',
+        label: 'Photo or video (optional)',
+        type: 'media',
+      },
+    ],
   },
   {
-    id: 'media',
-    icon: Camera,
-    title: 'Show us the issue',
-    sub: 'A photo or short video of the problem area — and any damage it caused.',
-    type: 'media',
-  },
-  {
-    id: 'fixture',
     icon: Droplet,
-    title: 'Fixture details',
-    sub: 'Brand and color, if visible or known. Skip if not applicable.',
-    type: 'text',
-    placeholder: 'e.g. "Moen, brushed nickel" or "Not sure / not applicable"',
+    title: 'The fixture & pipe',
+    sub: "Only fill in what you know -- skip anything you're not sure of.",
+    fields: [
+      {
+        id: 'fixture',
+        label: 'Fixture details',
+        type: 'text',
+        placeholder: 'e.g. "Moen, brushed nickel" or leave blank',
+      },
+      {
+        id: 'pipe',
+        label: 'What kind of pipe is it?',
+        type: 'choice',
+        options: ['Copper', 'PEX', 'PVC', 'CPVC', 'Galvanized', 'Not sure'],
+      },
+    ],
   },
   {
-    id: 'pipe',
-    icon: Wrench,
-    title: 'What kind of pipe is it?',
-    sub: 'Look under the sink or at the exposed line if you can.',
-    type: 'choice',
-    options: ['Copper', 'PEX', 'PVC', 'CPVC', 'Galvanized', "Not sure"],
-  },
-  {
-    id: 'access',
     icon: Lock,
-    title: 'How do we get to you?',
-    sub: 'Gate, door, elevator, or key codes — and where we should park.',
-    type: 'textarea',
-    placeholder: 'e.g. "Gate code 4471, park in driveway, ring bell twice"',
+    title: 'Getting to you',
+    sub: 'Access, permission to cut into walls if needed, and any pets on site.',
+    fields: [
+      {
+        id: 'access',
+        label: 'How do we get to you?',
+        type: 'textarea',
+        placeholder: 'e.g. "Gate code 4471, park in driveway, ring bell twice"',
+      },
+      {
+        id: 'cutting',
+        label: 'Can we cut into walls or floors if the fix needs it?',
+        type: 'choice',
+        options: ['Yes, go ahead if needed', 'No — call me first', 'Not sure / depends'],
+      },
+      {
+        id: 'pets',
+        label: 'Any pets we should know about?',
+        type: 'choice',
+        icon: PawPrint,
+        options: [
+          'No pets',
+          'Yes — will be secured before you arrive',
+          'Yes — friendly, may be loose',
+          'Yes — not friendly, please use caution',
+        ],
+      },
+    ],
   },
   {
-    id: 'cutting',
     icon: Wrench,
-    title: 'Can we cut into walls or floors?',
-    sub: "If the fix requires it, do we have your OK in advance?",
-    type: 'choice',
-    options: ['Yes, go ahead if needed', 'No — call me first', 'Not sure / depends'],
-  },
-  {
-    id: 'preference',
-    icon: Wrench,
-    title: 'Repair or replace?',
-    sub: 'If the fixture itself is the problem, what do you prefer?',
-    type: 'choice',
-    options: ['Repair if possible', 'Replace it', 'Whatever you recommend', 'Not applicable'],
-  },
-  {
-    id: 'leak_detection',
-    icon: Droplet,
-    title: 'Has a leak already been located?',
-    sub: 'Only relevant if this is a hidden leak — e.g. a rising water meter with no visible water.',
-    type: 'choice',
-    options: ['Leak detection already done', 'Not done yet', 'Not applicable — leak is visible'],
+    title: 'A couple last things',
+    sub: 'Your preference on the fix, and whether a leak has already been found.',
+    fields: [
+      {
+        id: 'preference',
+        label: 'Repair or replace?',
+        type: 'choice',
+        options: ['Repair if possible', 'Replace it', 'Whatever you recommend', 'Not applicable'],
+      },
+      {
+        id: 'leak_detection',
+        label: 'Has a leak already been located?',
+        type: 'choice',
+        options: ['Leak detection already done', 'Not done yet', 'Not applicable — leak is visible'],
+      },
+    ],
   },
 ];
 
-const TOTAL = STEPS.length;
+const TOTAL = PAGES.length;
 
 export default function ScopeIntake() {
   const [step, setStep] = useState(0);
@@ -93,16 +129,19 @@ export default function ScopeIntake() {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const current = STEPS[step];
+  const page = PAGES[step];
   const progress = ((step + 1) / TOTAL) * 100;
 
-  const setAnswer = (val) => setAnswers((a) => ({ ...a, [current.id]: val }));
+  const setAnswer = (fieldId, val) => setAnswers((a) => ({ ...a, [fieldId]: val }));
 
-  const canAdvance = () => {
-    if (current.type === 'media') return true; // optional but encouraged
-    const v = answers[current.id];
+  // Only fields explicitly marked `required` block progress. Right now
+  // that's just the first question (context) -- everything else can be
+  // left blank.
+  const canAdvance = () => page.fields.every((f) => {
+    if (!f.required) return true;
+    const v = answers[f.id];
     return v !== undefined && v !== '';
-  };
+  });
 
   const next = () => {
     if (step < TOTAL - 1) setStep(step + 1);
@@ -126,7 +165,10 @@ export default function ScopeIntake() {
     setSubmitted(true);
     setLoading(true);
     try {
-      const summary = STEPS.map((s) => `${s.title}: ${answers[s.id] || 'Not provided'}`).join('\n');
+      const summary = PAGES.flatMap((p) => p.fields)
+        .filter((f) => f.type !== 'media')
+        .map((f) => `${f.label}: ${answers[f.id] || 'Not provided'}`)
+        .join('\n');
 
       const response = await fetch('/api/review-job', {
         method: 'POST',
@@ -160,6 +202,7 @@ export default function ScopeIntake() {
           p_cutting: answers.cutting || null,
           p_preference: answers.preference || null,
           p_leak_detection: answers.leak_detection || null,
+          p_pets: answers.pets || null,
           p_ai_job_type: parsed.jobType || null,
           p_ai_urgency: parsed.urgency || null,
           p_ai_materials: parsed.likelyMaterials || [],
@@ -225,117 +268,125 @@ export default function ScopeIntake() {
 
         <div key={step} style={{ position: 'relative' }} className="w-full max-w-md animate-fadein">
           <div style={{ color: '#E8BD3A' }} className="text-sm tracking-[0.2em] mb-3 font-semibold">
-            STEP {step + 1} OF {TOTAL}
+            PAGE {step + 1} OF {TOTAL}
           </div>
 
           <div className="flex items-start gap-3 mb-1">
-            <current.icon size={24} style={{ color: '#E8BD3A' }} className="mt-1 shrink-0" strokeWidth={2} />
+            <page.icon size={24} style={{ color: '#E8BD3A' }} className="mt-1 shrink-0" strokeWidth={2} />
             <h1 style={{ color: '#FFFFFF', fontFamily: 'Oswald, sans-serif' }} className="text-[28px] leading-tight font-bold">
-              {current.title}
+              {page.title}
             </h1>
           </div>
-          <p style={{ color: '#C4C4C4' }} className="text-[15px] mb-6 ml-[36px]">{current.sub}</p>
+          <p style={{ color: '#C4C4C4' }} className="text-[15px] mb-6 ml-[36px]">{page.sub}</p>
 
-          <div className="ml-[36px]">
-            {current.type === 'textarea' && (
-              <textarea
-                autoFocus
-                value={answers[current.id] || ''}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder={current.placeholder}
-                rows={4}
-                style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors resize-none text-base shadow-inner"
-              />
-            )}
+          <div className="ml-[36px] space-y-7">
+            {page.fields.map((field) => (
+              <div key={field.id}>
+                <div className="flex items-center gap-2 mb-2.5">
+                  {field.icon && <field.icon size={16} style={{ color: '#9A9A9A' }} />}
+                  <label style={{ color: '#D8D8D8' }} className="text-[15px] font-semibold">
+                    {field.label}
+                  </label>
+                </div>
 
-            {current.type === 'text' && (
-              <input
-                autoFocus
-                type="text"
-                value={answers[current.id] || ''}
-                onChange={(e) => setAnswer(e.target.value)}
-                placeholder={current.placeholder}
-                style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors text-base shadow-inner"
-              />
-            )}
+                {field.type === 'textarea' && (
+                  <textarea
+                    value={answers[field.id] || ''}
+                    onChange={(e) => setAnswer(field.id, e.target.value)}
+                    placeholder={field.placeholder}
+                    rows={3}
+                    style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
+                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors resize-none text-base shadow-inner"
+                  />
+                )}
 
-            {current.type === 'choice' && (
-              <div className="flex flex-col gap-2">
-                {current.options.map((opt) => {
-                  const isSelected = answers[current.id] === opt;
-                  return (
-                    <button
-                      key={opt}
-                      onClick={() => setAnswer(opt)}
-                      style={{
-                        backgroundColor: isSelected ? '#26200A' : '#1C1C1C',
-                        border: `2px solid ${isSelected ? '#E8BD3A' : '#454545'}`,
-                        color: isSelected ? '#FFFFFF' : '#E0E0E0',
-                      }}
-                      className="text-left px-4 py-3.5 rounded-lg transition-all text-base"
-                    >
-                      <span className="flex items-center justify-between">
-                        {opt}
-                        {isSelected && <Check size={18} style={{ color: '#E8BD3A' }} />}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                {field.type === 'text' && (
+                  <input
+                    type="text"
+                    value={answers[field.id] || ''}
+                    onChange={(e) => setAnswer(field.id, e.target.value)}
+                    placeholder={field.placeholder}
+                    style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
+                    className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors text-base shadow-inner"
+                  />
+                )}
 
-            {current.type === 'media' && (
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  multiple
-                  capture="environment"
-                  onChange={handleFile}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ backgroundColor: '#161616', border: '2px dashed #5A5A5A' }}
-                  className="w-full rounded-lg py-8 flex flex-col items-center gap-2 transition-colors group"
-                >
-                  <div style={{ color: '#E8BD3A' }} className="flex gap-3">
-                    <Camera size={26} strokeWidth={1.75} />
-                    <Video size={26} strokeWidth={1.75} />
-                  </div>
-                  <span style={{ color: '#D0D0D0' }} className="text-[15px] font-medium">
-                    Tap to add photos or video
-                  </span>
-                </button>
-
-                {media.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 mt-4">
-                    {media.map((m, i) => (
-                      <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
-                        {m.type === 'image' ? (
-                          <img src={m.url} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Video size={20} style={{ color: '#C9A227' }} />
-                          </div>
-                        )}
+                {field.type === 'choice' && (
+                  <div className="flex flex-col gap-2">
+                    {field.options.map((opt) => {
+                      const isSelected = answers[field.id] === opt;
+                      return (
                         <button
-                          onClick={() => removeMedia(i)}
-                          style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
-                          className="rounded-full p-1"
+                          key={opt}
+                          onClick={() => setAnswer(field.id, opt)}
+                          style={{
+                            backgroundColor: isSelected ? '#26200A' : '#1C1C1C',
+                            border: `2px solid ${isSelected ? '#E8BD3A' : '#454545'}`,
+                            color: isSelected ? '#FFFFFF' : '#E0E0E0',
+                          }}
+                          className="text-left px-4 py-3.5 rounded-lg transition-all text-base"
                         >
-                          <X size={12} style={{ color: '#FFFFFF' }} />
+                          <span className="flex items-center justify-between">
+                            {opt}
+                            {isSelected && <Check size={18} style={{ color: '#E8BD3A' }} />}
+                          </span>
                         </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
-                <p style={{ color: '#6A6A6A' }} className="text-xs mt-3">Optional, but the plumber will thank you.</p>
+
+                {field.type === 'media' && (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,video/*"
+                      multiple
+                      capture="environment"
+                      onChange={handleFile}
+                      className="hidden"
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ backgroundColor: '#161616', border: '2px dashed #5A5A5A' }}
+                      className="w-full rounded-lg py-6 flex flex-col items-center gap-2 transition-colors group"
+                    >
+                      <div style={{ color: '#E8BD3A' }} className="flex gap-3">
+                        <Camera size={24} strokeWidth={1.75} />
+                        <Video size={24} strokeWidth={1.75} />
+                      </div>
+                      <span style={{ color: '#D0D0D0' }} className="text-[15px] font-medium">
+                        Tap to add photos or video
+                      </span>
+                    </button>
+
+                    {media.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 mt-4">
+                        {media.map((m, i) => (
+                          <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
+                            {m.type === 'image' ? (
+                              <img src={m.url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Video size={20} style={{ color: '#C9A227' }} />
+                              </div>
+                            )}
+                            <button
+                              onClick={() => removeMedia(i)}
+                              style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
+                              className="rounded-full p-1"
+                            >
+                              <X size={12} style={{ color: '#FFFFFF' }} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
+            ))}
           </div>
         </div>
       </main>
