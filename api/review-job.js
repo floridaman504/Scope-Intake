@@ -27,12 +27,28 @@ const TOOL_DENYLIST = [
   'utility knife', 'shop vac', 'wet vac', 'inspection camera', 'sewer camera',
 ];
 
-function filterTools(materials) {
-  if (!Array.isArray(materials)) return [];
-  return materials.filter((m) => {
+// Applied to the EN and ES materials lists together, not separately. The
+// denylist is English-only, so it can only reliably judge the EN list --
+// but the model is instructed to keep both arrays the same length and
+// order (index i in "es" is always the translation of index i in "en"),
+// so whichever indices survive the EN check are kept in BOTH lists. This
+// keeps the Spanish list correctly tool-filtered without needing a second,
+// harder-to-maintain Spanish denylist.
+function filterToolsPaired(enMaterials, esMaterials) {
+  const en = Array.isArray(enMaterials) ? enMaterials : [];
+  const es = Array.isArray(esMaterials) ? esMaterials : [];
+  const keepIdx = [];
+  en.forEach((m, i) => {
     const lower = String(m).toLowerCase();
-    return !TOOL_DENYLIST.some((tool) => lower.includes(tool));
+    if (!TOOL_DENYLIST.some((tool) => lower.includes(tool))) keepIdx.push(i);
   });
+  return {
+    en: keepIdx.map((i) => en[i]),
+    // Fall back to the English item if the model dropped the paired
+    // Spanish translation at that index -- better to show one English
+    // word on an otherwise-Spanish screen than to silently lose an item.
+    es: keepIdx.map((i) => (es[i] !== undefined ? es[i] : en[i])),
+  };
 }
 
 function getClientIp(req) {
@@ -68,16 +84,28 @@ export default async function handler(req, res) {
       });
     }
 
-    const prompt = `You are an experienced plumbing dispatcher reviewing a customer's job intake submission. Based on the following information, produce a CONCISE job brief for the plumber who will be dispatched. The customer's own answers below may be written in English or Spanish (the intake form supports both) -- regardless of which language they used, ALWAYS write your JSON response in English, since it's read by the dispatcher/plumber, not the customer. Respond ONLY in JSON, no markdown, no preamble, with this exact shape:
+    const prompt = `You are an experienced plumbing dispatcher reviewing a customer's job intake submission. Based on the following information, produce a CONCISE job brief for the plumber who will be dispatched. The customer's own answers below may be written in English or Spanish (the intake form supports both), independent of which language the brief itself needs.
+
+The brief is read by TWO different audiences who may not share a language: the dispatcher/plumber (always reads English) and the customer, reviewing their own submission back on the confirmation screen (reads whichever language they filled out the form in, English or Spanish). So produce BOTH an English and a Spanish version of the brief content -- these must be faithful translations of each other, not independently-written summaries that might disagree on facts. Respond ONLY in JSON, no markdown, no preamble, with this exact shape:
 {
-  "jobType": "short label for the type of job",
   "urgency": "Low | Medium | High",
-  "likelyMaterials": ["item1", "item2"],
-  "briefSummary": "2-3 sentence summary a plumber can read in 10 seconds before a job",
-  "watchOutFor": "one sentence on the biggest risk or thing to double check on site"
+  "en": {
+    "jobType": "short label for the type of job",
+    "likelyMaterials": ["item1", "item2"],
+    "briefSummary": "2-3 sentence summary a plumber can read in 10 seconds before a job",
+    "watchOutFor": "one sentence on the biggest risk or thing to double check on site"
+  },
+  "es": {
+    "jobType": "Spanish translation of en.jobType",
+    "likelyMaterials": ["Spanish translation of item1", "Spanish translation of item2"],
+    "briefSummary": "Spanish translation of en.briefSummary",
+    "watchOutFor": "Spanish translation of en.watchOutFor"
+  }
 }
 
-IMPORTANT for "likelyMaterials": list ONLY physical parts, fixtures, or supplies the plumber would need to bring or install for this specific job (e.g. wax ring, PEX fitting, shut-off valve, supply line, P-trap, flange). Do NOT list hand tools or equipment (e.g. pipe cutter, wrench, torch, plunger, snake, tape measure) -- every plumber already owns their own tools and chooses which ones to bring themselves. If you're unsure whether something is a tool or a material, leave it out.
+"urgency" is a single shared value (Low/Medium/High in English) -- do not translate it or duplicate it inside "en"/"es"; the app translates that label for display itself.
+
+IMPORTANT for "likelyMaterials" in both languages: list ONLY physical parts, fixtures, or supplies the plumber would need to bring or install for this specific job (e.g. wax ring, PEX fitting, shut-off valve, supply line, P-trap, flange). Do NOT list hand tools or equipment (e.g. pipe cutter, wrench, torch, plunger, snake, tape measure) -- every plumber already owns their own tools and chooses which ones to bring themselves. If you're unsure whether something is a tool or a material, leave it out. "es.likelyMaterials" MUST have exactly the same number of items as "en.likelyMaterials", in the same order, each one the direct translation of the item at that same position -- the app pairs them up by index.
 
 Customer submission:
 ${summary}
@@ -120,7 +148,9 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
     const clean = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(clean);
 
-    parsed.likelyMaterials = filterTools(parsed.likelyMaterials);
+    const filtered = filterToolsPaired(parsed.en?.likelyMaterials, parsed.es?.likelyMaterials);
+    parsed.en = { ...parsed.en, likelyMaterials: filtered.en };
+    parsed.es = { ...parsed.es, likelyMaterials: filtered.es };
 
     return res.status(200).json(parsed);
   } catch (err) {
