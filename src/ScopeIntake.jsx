@@ -418,8 +418,9 @@ export default function ScopeIntake() {
       // the customer, and choice-field VALUES are already canonical
       // English (see PAGES optionValues above). Free-text answers (context,
       // access, fixture) may still be in Spanish, which the model handles
-      // natively -- the job brief it returns is instructed to always come
-      // back in English regardless.
+      // natively -- the API returns the brief in BOTH English and Spanish
+      // (see api/review-job.js), so the customer's result screen below can
+      // show it in whichever language they used.
       const summary = PAGES.flatMap((p) => p.fields)
         .filter((f) => f.type !== 'media' && !f.excludeFromAiSummary)
         .map((f) => `${STRINGS.en.fields[f.id]?.label || f.id}: ${answers[f.id] || 'Not provided'}`)
@@ -448,6 +449,10 @@ export default function ScopeIntake() {
       // by tampering with the request — it only ever sends the subdomain
       // string, which is public info anyway (it's already in the URL).
       try {
+        // Always store the ENGLISH side of the brief (parsed.en), never
+        // whichever language the customer happened to view on screen --
+        // the dashboard/dispatcher reading this later always needs a
+        // consistent language regardless of how any given job came in.
         const { data: job, error: rpcError } = await supabase.rpc('submit_public_job', {
           p_subdomain: subdomain,
           p_customer_name: answers.customer_name || null,
@@ -461,11 +466,11 @@ export default function ScopeIntake() {
           p_preference: answers.preference || null,
           p_leak_detection: answers.leak_detection || null,
           p_pets: answers.pets || null,
-          p_ai_job_type: parsed.jobType || null,
+          p_ai_job_type: parsed.en?.jobType || null,
           p_ai_urgency: parsed.urgency || null,
-          p_ai_materials: parsed.likelyMaterials || [],
-          p_ai_summary: parsed.briefSummary || null,
-          p_ai_watch_out: parsed.watchOutFor || null,
+          p_ai_materials: parsed.en?.likelyMaterials || [],
+          p_ai_summary: parsed.en?.briefSummary || null,
+          p_ai_watch_out: parsed.en?.watchOutFor || null,
         });
         if (rpcError) throw rpcError;
 
@@ -504,11 +509,19 @@ export default function ScopeIntake() {
       }
     } catch (err) {
       setAiBrief({
-        jobType: 'Unable to generate brief',
         urgency: 'Unknown',
-        likelyMaterials: [],
-        briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
-        watchOutFor: '—',
+        en: {
+          jobType: 'Unable to generate brief',
+          likelyMaterials: [],
+          briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
+          watchOutFor: '—',
+        },
+        es: {
+          jobType: 'No se pudo generar el resumen',
+          likelyMaterials: [],
+          briefSummary: 'Ocurrió un error al generar el resumen con IA. Las respuestas sin procesar abajo siguen completas y son utilizables.',
+          watchOutFor: '—',
+        },
       });
     } finally {
       setLoading(false);
@@ -800,6 +813,11 @@ export default function ScopeIntake() {
 function ResultScreen({ lang, setLang, loading, loadingMessage, brief, answers, media, onReset }) {
   const resultHeadingRef = useRef(null);
   const t = STRINGS[lang];
+  // The API returns the brief in both languages (brief.en / brief.es) --
+  // show whichever one matches the customer's current toggle. Falls back
+  // to English if, for some reason, that half is missing (e.g. an older
+  // cached response shape) rather than rendering nothing.
+  const displayBrief = brief?.[lang] || brief?.en || {};
 
   // Same reasoning as the intake pages: once the AI brief finishes loading,
   // the whole screen swaps from a spinner to the result. Move focus to the
@@ -844,7 +862,7 @@ function ResultScreen({ lang, setLang, loading, loadingMessage, brief, answers, 
               style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }}
               className="text-2xl font-bold mb-2 outline-none"
             >
-              {brief?.jobType}
+              {displayBrief.jobType}
             </h1>
 
             {(answers.customer_name || answers.customer_phone) && (
@@ -860,13 +878,13 @@ function ResultScreen({ lang, setLang, loading, loadingMessage, brief, answers, 
             </div>
 
             <Section label={t.result.summary}>
-              <p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed">{brief?.briefSummary}</p>
+              <p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed">{displayBrief.briefSummary}</p>
             </Section>
 
-            {brief?.likelyMaterials?.length > 0 && (
+            {displayBrief.likelyMaterials?.length > 0 && (
               <Section label={t.result.likelyMaterials}>
                 <div className="flex flex-wrap gap-2">
-                  {brief.likelyMaterials.map((m, i) => (
+                  {displayBrief.likelyMaterials.map((m, i) => (
                     <span key={i} style={{ backgroundColor: '#1C1708', border: '1px solid #3A2F0E', color: '#D9B84A' }} className="text-xs px-3 py-1.5 rounded-full">
                       {m}
                     </span>
@@ -876,7 +894,7 @@ function ResultScreen({ lang, setLang, loading, loadingMessage, brief, answers, 
             )}
 
             <Section label={t.result.watchOut}>
-              <p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed">{brief?.watchOutFor}</p>
+              <p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed">{displayBrief.watchOutFor}</p>
             </Section>
 
             {media.length > 0 && (
