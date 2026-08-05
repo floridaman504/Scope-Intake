@@ -68,7 +68,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const prompt = `You are an experienced plumbing dispatcher reviewing a customer's job intake submission. Based on the following information, produce a CONCISE job brief for the plumber who will be dispatched. Respond ONLY in JSON, no markdown, no preamble, with this exact shape:
+    const prompt = `You are an experienced plumbing dispatcher reviewing a customer's job intake submission. Based on the following information, produce a CONCISE job brief for the plumber who will be dispatched. The customer's own answers below may be written in English or Spanish (the intake form supports both) -- regardless of which language they used, ALWAYS write your JSON response in English, since it's read by the dispatcher/plumber, not the customer. Respond ONLY in JSON, no markdown, no preamble, with this exact shape:
 {
   "jobType": "short label for the type of job",
   "urgency": "Low | Medium | High",
