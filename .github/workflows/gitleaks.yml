@@ -1,0 +1,30 @@
+name: Secret scan
+
+# Runs on every push to catch an accidentally committed API key, Supabase
+# key, or other secret as early as possible. This repo is managed via
+# GitHub's web upload UI rather than local git, so a real pre-commit hook
+# isn't possible -- this is the closest equivalent: it fires the moment a
+# commit lands, before anyone has to notice it manually.
+on:
+  push:
+    branches:
+      - main
+      - scopwell-preview
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
