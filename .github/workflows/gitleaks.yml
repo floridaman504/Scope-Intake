@@ -1,0 +1,30 @@
+name: Secret scan
+
+# Runs on every push and PR to catch a hardcoded key, token, or credential
+# before it lands on a deployed branch. This is the server-side backstop for
+# the local pre-commit hook (scripts/scan-secrets.js) -- it still catches
+# secrets even if a commit was made through the GitHub web UI, from a machine
+# that never ran `npm install`, or with hooks bypassed via `--no-verify`.
+on:
+  push:
+    branches:
+      - main
+      - scopwell-preview
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
