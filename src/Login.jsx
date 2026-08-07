@@ -1,6 +1,14 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
+import { useAuth } from './AuthContext.jsx';
+
+const EXPIRY_MESSAGES = {
+  inactivity_timeout: 'You were signed out after a period of inactivity.',
+  session_revoked: 'Your session was signed out (from this device or by an admin).',
+  auth_state_signed_out_externally: 'Your session ended and needed to be refreshed. Please sign in again.',
+  concurrent_session_limit_exceeded: 'You were signed out because you reached the device sign-in limit.',
+};
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -8,6 +16,11 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { consumeRestoreSnapshot } = useAuth();
+
+  const expiredReason = searchParams.get('expired') === '1' ? searchParams.get('reason') : null;
+  const expiredMessage = expiredReason && (EXPIRY_MESSAGES[expiredReason] || 'You were signed out.');
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -17,9 +30,19 @@ export default function Login() {
     setLoading(false);
     if (error) {
       setError('Incorrect email or password.');
-    } else {
-      navigate('/dashboard');
+      return;
     }
+
+    // Restore the page the user was on before an expiry/revocation/direct
+    // link redirect, if we have one and it's still fresh. Only ever
+    // restore to an in-app relative path (starts with "/", never "//" --
+    // guards against an open-redirect if this value were ever tampered
+    // with) -- otherwise fall back to the normal /dashboard landing.
+    const snapshot = consumeRestoreSnapshot ? consumeRestoreSnapshot() : null;
+    const target = snapshot?.path && snapshot.path.startsWith('/') && !snapshot.path.startsWith('//')
+      ? snapshot.path
+      : '/dashboard';
+    navigate(target);
   };
 
   return (
@@ -37,6 +60,13 @@ export default function Login() {
         <p style={{ color: '#9A9A9A' }} className="text-sm mb-8 text-center">
           Sign in to access the dispatch dashboard.
         </p>
+
+        {expiredMessage && (
+          <p style={{ color: '#C9A227', backgroundColor: '#1F1B0E', border: '1px solid #4A3D14' }}
+            className="text-xs rounded-md px-3 py-2 mb-4 text-center">
+            {expiredMessage}
+          </p>
+        )}
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>

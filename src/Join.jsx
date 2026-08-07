@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
+import { recordActivity } from './activityTracking.js';
 
 export default function Join() {
   const [code, setCode] = useState('');
@@ -56,6 +57,10 @@ export default function Join() {
         return;
       }
 
+      // Counts as "meaningful activity" for the session-hardening
+      // inactivity clock even though it's a successful API call rather
+      // than a click/keystroke -- see activityTracking.js.
+      recordActivity();
       navigate('/dashboard');
     } catch (err) {
       setError('Something went wrong. Please try again.');

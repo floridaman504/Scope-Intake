@@ -1,8 +1,24 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
 
 export default function Dashboard() {
-  const { employee, signOut } = useAuth();
+  const { employee, signOut, signOutEverywhere } = useAuth();
+  const [everywhereBusy, setEverywhereBusy] = useState(false);
+  const [everywhereMsg, setEverywhereMsg] = useState('');
+
+  const handleSignOutEverywhere = async () => {
+    setEverywhereBusy(true);
+    setEverywhereMsg('');
+    try {
+      await signOutEverywhere();
+      setEverywhereMsg('All your other sessions have been signed out. This device will sign out shortly too.');
+    } catch (e) {
+      setEverywhereMsg('Could not sign out other sessions: ' + (e.message || 'unknown error'));
+    } finally {
+      setEverywhereBusy(false);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
@@ -22,13 +38,33 @@ export default function Dashboard() {
         Role: <span style={{ color: '#C9A227' }}>{employee?.role || '—'}</span>
       </p>
 
-      <button
-        onClick={signOut}
-        style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
-        className="text-sm px-4 py-2 rounded-md"
-      >
-        Sign Out
-      </button>
+      <div className="flex flex-wrap gap-3 mb-4">
+        <button
+          onClick={signOut}
+          style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
+          className="text-sm px-4 py-2 rounded-md"
+        >
+          Sign Out
+        </button>
+        <Link
+          to="/sessions"
+          style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
+          className="text-sm px-4 py-2 rounded-md"
+        >
+          {employee?.role === 'owner' ? 'Manage team sessions' : 'Your active sessions'}
+        </Link>
+        <button
+          onClick={handleSignOutEverywhere}
+          disabled={everywhereBusy}
+          style={{ border: '1px solid #E07A6E', color: '#E07A6E' }}
+          className="text-sm px-4 py-2 rounded-md"
+        >
+          {everywhereBusy ? 'Signing out everywhere…' : 'Sign out everywhere'}
+        </button>
+      </div>
+      {everywhereMsg && (
+        <p style={{ color: '#9A9A9A' }} className="text-xs max-w-md">{everywhereMsg}</p>
+      )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
