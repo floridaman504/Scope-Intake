@@ -1,0 +1,92 @@
+name: Login flow test suite
+
+# Tier 1.5 (login/auth flow test suite). Mirrors the split the audit
+# playbook asked for: fast unit tests on every push for quick feedback,
+# broader integration tests only on pull requests and merges to main
+# (they're slower -- full AuthProvider + real routing + fake-timer session-
+# expiry simulation -- and don't need to gate every single push the way a
+# green/red unit-test signal does).
+#
+# Coverage-with-threshold only runs where the FULL suite (unit +
+# integration) runs, i.e. pull requests and pushes to main -- not on every
+# feature-branch push. Reason: the unit suite alone covers ~79-83% of the
+# in-scope auth files (see docs/audits/2026-08-06-login-test-suite.md);
+# the fuller ~89-94% numbers vitest.config.js's thresholds are set against
+# only materialize once the integration suite (which exercises more of
+# AuthContext.jsx and SessionExpiryWarning.jsx together) also runs. Every
+# push still gets pass/fail unit test feedback either way -- what's gated
+# to PR/merge is specifically the coverage *percentage* check, not test
+# correctness.
+#
+# Nothing in this workflow talks to the real Supabase project -- every test
+# mocks src/supabaseClient.js (see src/test/mocks/supabaseMock.js). No
+# secrets are needed for this workflow to run.
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit tests (every push)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+  integration-tests:
+    name: Integration tests (PRs and merges to main)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:integration
+
+  coverage:
+    name: Coverage gate (full suite, PRs and merges to main)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run full suite with coverage thresholds
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14

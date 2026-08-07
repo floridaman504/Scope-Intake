@@ -30,3 +30,6 @@ pnpm-debug.log*
 
 # Gitleaks report output (if run locally with -r)
 gitleaks-report.json
+
+# Vitest coverage output (Tier 1.5 test suite)
+coverage/
