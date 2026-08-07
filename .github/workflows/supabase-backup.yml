@@ -1,0 +1,149 @@
+name: Supabase daily backup
+
+# Tier 1.4 (backup strategy). Runs `pg_dump` against the live production
+# Supabase Postgres instance on a daily schedule, encrypts the dump, and
+# pushes it to a SEPARATE, private GitHub repo -- deliberately not this repo
+# (which is public) and not any Supabase feature (Free plan has none: see
+# docs/audits/2026-08-06-backup-strategy.md). If Supabase or this repo is
+# ever lost/compromised, the backups still exist somewhere else.
+#
+# Setup required before this workflow will run successfully (Dante, one-time):
+#   1. Add repo secret SUPABASE_DB_URL -- Supabase Dashboard > Project
+#      Settings > Database > Connection string > URI (use the "Session
+#      pooler" or direct connection string, postgres:// scheme). Treat this
+#      like a root DB password -- it is one.
+#   2. Create a new PRIVATE GitHub repo to hold backups (e.g.
+#      floridaman504/scope-backups). It can start completely empty.
+#   3. Add repo secret BACKUP_REPO -- e.g. "floridaman504/scope-backups".
+#   4. Add repo secret BACKUP_REPO_TOKEN -- a fine-grained GitHub PAT scoped
+#      ONLY to that one backups repo, with Contents: Read and write.
+#      Settings > Developer settings > Personal access tokens > Fine-grained.
+#   5. Add repo secret BACKUP_ENCRYPTION_PASSPHRASE -- any long random
+#      string (e.g. `openssl rand -base64 32`), used to symmetrically
+#      encrypt the dump before it leaves this workflow. Store this
+#      passphrase somewhere durable OUTSIDE GitHub too (password manager) --
+#      if you lose it, the backups are permanently unreadable.
+#
+# All four secrets go in: this repo's Settings > Secrets and variables >
+# Actions > New repository secret. Full steps in
+# docs/audits/2026-08-06-backup-strategy.md.
+#
+# Until all four secrets exist, this workflow will fail fast at the
+# "Verify secrets are configured" step with a clear message instead of
+# silently doing nothing.
+
+on:
+  schedule:
+    # 09:17 UTC daily -- arbitrary off-peak-ish time, avoids the top of the
+    # hour when a lot of scheduled Actions traffic piles up on GitHub's side.
+    - cron: '17 9 * * *'
+  workflow_dispatch: {} # lets Dante trigger a backup manually from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify secrets are configured
+        run: |
+          missing=0
+          for name in SUPABASE_DB_URL BACKUP_REPO BACKUP_REPO_TOKEN BACKUP_ENCRYPTION_PASSPHRASE; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: $name -- see setup steps in docs/audits/2026-08-06-backup-strategy.md"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            exit 1
+          fi
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Dump production database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y-%m-%d)
+          echo "STAMP=$STAMP" >> "$GITHUB_ENV"
+          # Custom format: compressed, and restorable selectively with
+          # pg_restore -- not a plain-text SQL file.
+          pg_dump "$SUPABASE_DB_URL" -Fc --no-owner --no-privileges -f "scope-$STAMP.dump"
+          SIZE=$(stat -c%s "scope-$STAMP.dump")
+          echo "Dump size: $SIZE bytes"
+          # A near-empty dump almost always means auth failed silently or
+          # the connection string is wrong (pg_dump can exit 0 on a dump of
+          # an essentially empty/inaccessible database) -- fail loudly
+          # rather than push a useless backup and have Dante find out
+          # during an actual emergency.
+          if [ "$SIZE" -lt 2000 ]; then
+            echo "::error::Dump is suspiciously small ($SIZE bytes) -- refusing to push. Check SUPABASE_DB_URL."
+            exit 1
+          fi
+
+      - name: Validate dump is well-formed
+        run: |
+          set -euo pipefail
+          STAMP="${{ env.STAMP }}"
+          # pg_restore --list parses the archive's table of contents without
+          # needing a live database connection -- catches a truncated or
+          # corrupt dump before it ever gets encrypted and shipped.
+          pg_restore --list "scope-$STAMP.dump" > /tmp/toc.txt
+          echo "Dump TOC entries: $(wc -l < /tmp/toc.txt)"
+          for table in companies employees jobs invite_codes ai_usage_log billing_guardrails; do
+            if ! grep -q "TABLE DATA public $table" /tmp/toc.txt; then
+              echo "::error::Expected table '$table' not found in dump TOC -- schema may have changed or dump is incomplete."
+              exit 1
+            fi
+          done
+
+      - name: Encrypt dump
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          STAMP="${{ env.STAMP }}"
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_ENCRYPTION_PASSPHRASE" \
+            -o "scope-$STAMP.dump.gpg" "scope-$STAMP.dump"
+          rm -f "scope-$STAMP.dump" # don't leave the plaintext dump on the runner filesystem/logs
+
+      - name: Push encrypted dump to backups repo
+        env:
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          STAMP="${{ env.STAMP }}"
+          git clone "https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/${BACKUP_REPO}.git" backups-repo
+          mkdir -p backups-repo/daily
+          mv "scope-$STAMP.dump.gpg" "backups-repo/daily/scope-$STAMP.dump.gpg"
+
+          cd backups-repo
+          git config user.email "backup-bot@scope.local"
+          git config user.name "Scope Backup Bot"
+          git add "daily/scope-$STAMP.dump.gpg"
+
+          # Retention: keep the 30 most recent daily files. Older ones stay
+          # recoverable from git history (this is a private repo Dante
+          # controls) but drop out of the active working tree so the repo
+          # doesn't grow unbounded. 30 days is arbitrary -- see the backup
+          # strategy doc for the reasoning.
+          ls -1 daily/*.dump.gpg | sort | head -n -30 | xargs -r git rm --quiet
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit (dump identical to yesterday's or nothing to prune)."
+          else
+            git commit -m "Backup: $STAMP"
+            git push origin HEAD
+          fi
