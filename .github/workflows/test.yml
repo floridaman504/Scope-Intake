@@ -11,7 +11,7 @@ name: Login flow test suite
 # integration) runs, i.e. pull requests and pushes to main -- not on every
 # feature-branch push. Reason: the unit suite alone covers ~79-83% of the
 # in-scope auth files (see docs/audits/2026-08-06-login-test-suite.md);
-# the fuller ~89-94% numbers vitest.config.js's thresholds are set against
+# the fuller ~89-94% numbers vitest.config.js's thresholds are set ahgainst
 # only materialize once the integration suite (which exercises more of
 # AuthContext.jsx and SessionExpiryWarning.jsx together) also runs. Every
 # push still gets pass/fail unit test feedback either way -- what's gated
@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci
@@ -58,7 +58,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci
@@ -75,7 +75,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - run: npm ci
