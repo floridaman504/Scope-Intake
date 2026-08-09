@@ -108,7 +108,7 @@ export default async function handler(req, res) {
             // Resend's shared sandbox sender -- only deliverable to the
             // account's own address. Swap for a verified address on your
             // own domain in Resend before this can reach real recipients.
-            from: 'Scope Alerts <onboarding@resend.dev>',
+            from: 'Scope Alerts <alerts@mail.scopwell.com>',
             to: emails,
             subject: `Missed lead: ${job.ai_job_type || 'a job'} unclaimed for ${ageMinutes} min`,
             html: `
