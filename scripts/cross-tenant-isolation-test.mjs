@@ -78,12 +78,31 @@ async function scalar(sql, params) {
   return val;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ROLE_RE = /^[a-z_]+$/;
+
+// `SET`/`SET LOCAL` are Postgres utility statements, not regular queries --
+// they don't accept bind parameters ($1) the way SELECT/INSERT/etc do (the
+// `pg` driver still sends them through the extended query protocol, which
+// Postgres rejects for SET with "syntax error at or near $1" -- this is
+// exactly what broke on the first CI run). So this inlines the value
+// directly instead. Safe here because `role` and `sub` are never anything
+// but this script's own hardcoded constants (role names and the fixed IDS
+// UUIDs above) -- never external input -- and the regex checks below are a
+// defense-in-depth belt on top of that, not the only thing standing
+// between this and injection.
 async function asRole(role, sub) {
+  if (!ROLE_RE.test(role)) {
+    throw new Error(`Refusing to SET ROLE to unexpected value: ${JSON.stringify(role)}`);
+  }
   await client.query('set local role ' + role + ';');
   if (sub) {
-    await client.query("set local request.jwt.claim.sub = $1;", [sub]);
+    if (!UUID_RE.test(sub)) {
+      throw new Error(`Refusing to SET request.jwt.claim.sub to a non-UUID value: ${JSON.stringify(sub)}`);
+    }
+    await client.query(`set local request.jwt.claim.sub = '${sub}';`);
   } else {
-    await client.query("reset request.jwt.claim.sub;");
+    await client.query('reset request.jwt.claim.sub;');
   }
 }
 
