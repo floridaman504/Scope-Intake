@@ -295,7 +295,7 @@ export default function ScopeIntake() {
                     {media.map((m, i) => (
                       <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
                         {m.type === 'image' ? (
-                          <img src={m.url} alt="" className="w-full h-full object-cover" />
+                          <img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <Video size={20} style={{ color: '#C9A227' }} />
@@ -303,6 +303,7 @@ export default function ScopeIntake() {
                         )}
                         <button
                           onClick={() => removeMedia(i)}
+                          aria-label={`Remove ${m.type === 'video' ? 'video' : 'photo'} ${i + 1}`}
                           style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
                           className="rounded-full p-1"
                         >
@@ -410,7 +411,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
                   {media.map((m, i) => (
                     <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E' }} className="aspect-square rounded-md overflow-hidden">
                       {m.type === 'image' ? (
-                        <img src={m.url} alt="" className="w-full h-full object-cover" />
+                        <img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Video size={20} style={{ color: '#C9A227' }} />
