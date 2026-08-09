@@ -16,7 +16,7 @@ const STEPS = [
     id: 'media',
     icon: Camera,
     title: 'Show us the issue',
-    sub: 'A photo or short video of the problem area â and any damage it caused.',
+    sub: 'A photo or short video of the problem area — and any damage it caused.',
     type: 'media',
   },
   {
@@ -39,7 +39,7 @@ const STEPS = [
     id: 'access',
     icon: Lock,
     title: 'How do we get to you?',
-    sub: 'Gate, door, elevator, or key codes â and where we should park.',
+    sub: 'Gate, door, elevator, or key codes — and where we should park.',
     type: 'textarea',
     placeholder: 'e.g. "Gate code 4471, park in driveway, ring bell twice"',
   },
@@ -49,7 +49,7 @@ const STEPS = [
     title: 'Can we cut into walls or floors?',
     sub: "If the fix requires it, do we have your OK in advance?",
     type: 'choice',
-    options: ['Yes, go ahead if needed', 'No â call me first', 'Not sure / depends'],
+    options: ['Yes, go ahead if needed', 'No — call me first', 'Not sure / depends'],
   },
   {
     id: 'preference',
@@ -63,9 +63,9 @@ const STEPS = [
     id: 'leak_detection',
     icon: Droplet,
     title: 'Has a leak already been located?',
-    sub: 'Only relevant if this is a hidden leak â e.g. a rising water meter with no visible water.',
+    sub: 'Only relevant if this is a hidden leak — e.g. a rising water meter with no visible water.',
     type: 'choice',
-    options: ['Leak detection already done', 'Not done yet', 'Not applicable â leak is visible'],
+    options: ['Leak detection already done', 'Not done yet', 'Not applicable — leak is visible'],
   },
 ];
 
@@ -129,7 +129,7 @@ export default function ScopeIntake() {
       setAiBrief(parsed);
 
       // Save the full job (customer answers + AI brief) to the database.
-      // If this fails, we don't block the customer â they've done their part.
+      // If this fails, we don't block the customer — they've done their part.
       try {
         await supabase.from('jobs').insert({
           context: answers.context || null,
@@ -156,7 +156,7 @@ export default function ScopeIntake() {
         urgency: 'Unknown',
         likelyMaterials: [],
         briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
-        watchOutFor: 'â',
+        watchOutFor: '—',
       });
     } finally {
       setLoading(false);
@@ -377,7 +377,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
           </div>
         ) : (
           <>
-            <div style={{ color: '#C9A227' }} className="text-xs tracking-[0.2em] mb-2 font-medium">JOB BRIEF â READY FOR DISPATCH</div>
+            <div style={{ color: '#C9A227' }} className="text-xs tracking-[0.2em] mb-2 font-medium">JOB BRIEF — READY FOR DISPATCH</div>
             <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-6">{brief?.jobType}</h1>
 
             <div className="flex items-center gap-2 mb-6">
