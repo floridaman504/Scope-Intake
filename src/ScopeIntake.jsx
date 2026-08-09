@@ -224,7 +224,7 @@ export default function ScopeIntake() {
                 placeholder={current.placeholder}
                 rows={4}
                 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors resize-none text-base shadow-inner"
+                className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors resize-none text-base shadow-inner"
               />
             )}
 
@@ -236,7 +236,7 @@ export default function ScopeIntake() {
                 onChange={(e) => setAnswer(e.target.value)}
                 placeholder={current.placeholder}
                 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-                className="w-full rounded-lg px-4 py-3.5 placeholder-[#6A6A6A] outline-none transition-colors text-base shadow-inner"
+                className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
               />
             )}
 
@@ -312,7 +312,7 @@ export default function ScopeIntake() {
                     ))}
                   </div>
                 )}
-                <p style={{ color: '#6A6A6A' }} className="text-xs mt-3">Optional, but the plumber will thank you.</p>
+                <p style={{ color: '#9A9A9A' }} className="text-xs mt-3">Optional, but the plumber will thank you.</p>
               </div>
             )}
           </div>
@@ -372,7 +372,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
         {loading ? (
           <div className="flex flex-col items-center gap-4 py-20">
             <div style={{ border: '2px solid #2E2E2E', borderTopColor: '#C9A227' }} className="w-10 h-10 rounded-full animate-spin" />
-            <p style={{ color: '#9A9A9A' }} className="text-sm">Reviewing the job submission...</p>
+            <p style={{ color: '#C4C4C4' }} className="text-sm">Reviewing the job submission...</p>
           </div>
         ) : (
           <>
@@ -381,7 +381,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
 
             <div className="flex items-center gap-2 mb-6">
               <UrgencyBadge level={brief?.urgency} />
-              <span style={{ color: '#6A6A6A' }} className="text-xs">{media.length} attachment{media.length !== 1 ? 's' : ''}</span>
+              <span style={{ color: '#9A9A9A' }} className="text-xs">{media.length} attachment{media.length !== 1 ? 's' : ''}</span>
             </div>
 
             <Section label="Summary">
@@ -455,7 +455,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
 function Section({ label, children }) {
   return (
     <div className="mb-6">
-      <div style={{ color: '#6A6A6A' }} className="text-[11px] tracking-[0.15em] mb-2 font-medium">{label.toUpperCase()}</div>
+      <div style={{ color: '#9A9A9A' }} className="text-[11px] tracking-[0.15em] mb-2 font-medium">{label.toUpperCase()}</div>
       {children}
     </div>
   );

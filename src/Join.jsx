@@ -83,13 +83,13 @@ export default function Join() {
         <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1 text-center">
           Join Your Team
         </h1>
-        <p style={{ color: '#9A9A9A' }} className="text-sm mb-8 text-center">
+        <p style={{ color: '#C4C4C4' }} className="text-sm mb-8 text-center">
           Enter the invite code your admin gave you.
         </p>
 
         <form onSubmit={handleJoin} className="space-y-4">
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Invite Code</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Invite Code</label>
             <input
               type="text"
               required
@@ -97,11 +97,11 @@ export default function Join() {
               onChange={(e) => setCode(e.target.value)}
               placeholder="e.g. SCOPE-4X7K"
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base placeholder-[#6A6A6A]"
+              className="w-full rounded-lg px-4 py-3 outline-none text-base placeholder-[#9A9A9A]"
             />
           </div>
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Your Name</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Your Name</label>
             <input
               type="text"
               required
@@ -112,7 +112,7 @@ export default function Join() {
             />
           </div>
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Email</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Email</label>
             <input
               type="email"
               required
@@ -123,7 +123,7 @@ export default function Join() {
             />
           </div>
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Create a Password</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Create a Password</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -160,7 +160,7 @@ export default function Join() {
           </button>
         </form>
 
-        <p style={{ color: '#6A6A6A' }} className="text-xs text-center mt-6">
+        <p style={{ color: '#9A9A9A' }} className="text-xs text-center mt-6">
           Already have an account?{' '}
           <Link to="/login" style={{ color: '#C9A227' }}>Sign in</Link>
         </p>

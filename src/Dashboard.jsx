@@ -31,10 +31,10 @@ export default function Dashboard() {
       <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-2">
         You're logged in.
       </h1>
-      <p style={{ color: '#9A9A9A' }} className="text-sm mb-1">
+      <p style={{ color: '#C4C4C4' }} className="text-sm mb-1">
         Name: {employee?.full_name || '—'}
       </p>
-      <p style={{ color: '#9A9A9A' }} className="text-sm mb-6">
+      <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
         Role: <span style={{ color: '#C9A227' }}>{employee?.role || '—'}</span>
       </p>
 
@@ -63,7 +63,7 @@ export default function Dashboard() {
         </button>
       </div>
       {everywhereMsg && (
-        <p style={{ color: '#9A9A9A' }} className="text-xs max-w-md">{everywhereMsg}</p>
+        <p style={{ color: '#C4C4C4' }} className="text-xs max-w-md">{everywhereMsg}</p>
       )}
 
       <style>{`

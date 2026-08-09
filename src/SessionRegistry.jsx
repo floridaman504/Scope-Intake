@@ -73,13 +73,13 @@ export default function SessionRegistry() {
           <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
           <span style={{ fontFamily: 'Oswald, sans-serif' }} className="text-lg font-bold tracking-[0.15em]">SCOPE</span>
         </div>
-        <Link to="/dashboard" style={{ color: '#9A9A9A' }} className="text-sm">Back to dashboard</Link>
+        <Link to="/dashboard" style={{ color: '#C4C4C4' }} className="text-sm">Back to dashboard</Link>
       </div>
 
       <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1">
         {isOwner ? 'Active Sessions — Your Team' : 'Your Active Sessions'}
       </h1>
-      <p style={{ color: '#9A9A9A' }} className="text-sm mb-6">
+      <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
         {isOwner
           ? 'Every session across employees in your company. Revoking a session signs that device out within seconds.'
           : 'Devices currently signed into your account.'}
@@ -87,11 +87,11 @@ export default function SessionRegistry() {
 
       {error && <p style={{ color: '#E07A6E' }} className="text-sm mb-4">{error}</p>}
       {loading ? (
-        <p style={{ color: '#9A9A9A' }} className="text-sm">Loading…</p>
+        <p style={{ color: '#C4C4C4' }} className="text-sm">Loading…</p>
       ) : (
         <div className="space-y-3">
           {sessions.length === 0 && (
-            <p style={{ color: '#9A9A9A' }} className="text-sm">No sessions found.</p>
+            <p style={{ color: '#C4C4C4' }} className="text-sm">No sessions found.</p>
           )}
           {sessions.map((s) => {
             const isCurrent = s.id === sessionId;
@@ -111,9 +111,9 @@ export default function SessionRegistry() {
                     )}
                   </p>
                   {who && (
-                    <p style={{ color: '#9A9A9A' }} className="text-xs">{s.device_label || 'Unknown device'}</p>
+                    <p style={{ color: '#C4C4C4' }} className="text-xs">{s.device_label || 'Unknown device'}</p>
                   )}
-                  <p style={{ color: '#6A6A6A' }} className="text-xs mt-1">
+                  <p style={{ color: '#9A9A9A' }} className="text-xs mt-1">
                     IP: {s.ip_address || 'unknown'} · Last active: {new Date(s.last_activity_at).toLocaleString()} · Signed in: {new Date(s.created_at).toLocaleString()}
                   </p>
                   <p style={{ color: isActive ? '#7FBF7F' : '#E07A6E' }} className="text-xs mt-1">

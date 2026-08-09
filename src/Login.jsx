@@ -59,7 +59,7 @@ export default function Login() {
         <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1 text-center">
           Dispatch Login
         </h1>
-        <p style={{ color: '#9A9A9A' }} className="text-sm mb-8 text-center">
+        <p style={{ color: '#C4C4C4' }} className="text-sm mb-8 text-center">
           Sign in to access the dispatch dashboard.
         </p>
 
@@ -72,7 +72,7 @@ export default function Login() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Email</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Email</label>
             <input
               type="email"
               required
@@ -83,7 +83,7 @@ export default function Login() {
             />
           </div>
           <div>
-            <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Password</label>
+            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Password</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -119,7 +119,7 @@ export default function Login() {
           </button>
         </form>
 
-        <p style={{ color: '#6A6A6A' }} className="text-xs text-center mt-6">
+        <p style={{ color: '#9A9A9A' }} className="text-xs text-center mt-6">
           Have an invite code?{' '}
           <Link to="/join" style={{ color: '#C9A227' }}>Create your account</Link>
         </p>

@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: '#0A0A0A', color: '#9A9A9A', minHeight: '100vh' }}
+      <div style={{ backgroundColor: '#0A0A0A', color: '#C4C4C4', minHeight: '100vh' }}
         className="flex items-center justify-center text-sm font-sans">
         Loading…
       </div>
@@ -43,7 +43,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   if (allowedRoles && (!employee || !allowedRoles.includes(employee.role))) {
     return (
-      <div style={{ backgroundColor: '#0A0A0A', color: '#9A9A9A', minHeight: '100vh' }}
+      <div style={{ backgroundColor: '#0A0A0A', color: '#C4C4C4', minHeight: '100vh' }}
         className="flex items-center justify-center text-sm font-sans px-6 text-center">
         You don't have access to this page.
       </div>

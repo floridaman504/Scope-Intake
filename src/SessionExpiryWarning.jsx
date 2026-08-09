@@ -32,7 +32,7 @@ export default function SessionExpiryWarning() {
         >
           Still there?
         </h2>
-        <p style={{ color: '#9A9A9A' }} className="text-sm mb-4">
+        <p style={{ color: '#C4C4C4' }} className="text-sm mb-4">
           You'll be signed out in{' '}
           <span style={{ color: '#C9A227', fontWeight: 600 }}>{seconds}s</span> due to
           inactivity. Anything you're working on stays saved.
