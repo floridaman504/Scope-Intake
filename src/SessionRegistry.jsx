@@ -58,7 +58,12 @@ export default function SessionRegistry() {
     setActionBusy(null);
   };
 
-  const handleSignOutUserEverywhere = async (userId) => {
+  const handleSignOutUserEverywhere = async (userId, displayName) => {
+    // Destructive, hard-to-undo action -- confirm before firing it.
+    // Flagged as missing in docs/audits/2026-08-08-frontend-health-audit.md.
+    if (!window.confirm(`Sign ${displayName || 'this employee'} out of every device? This cannot be undone.`)) {
+      return;
+    }
     setActionBusy(userId);
     await signOutEverywhere(userId);
     await load();
@@ -96,6 +101,17 @@ export default function SessionRegistry() {
           {sessions.map((s) => {
             const isCurrent = s.id === sessionId;
             const who = isOwner ? employeesById[s.user_id] : null;
+            // BUGFIX (2026-08-09): sign_out_everywhere() on the server wipes
+            // EVERY session belonging to a user_id, not just the one row the
+            // button was clicked from. Previously this button was hidden
+            // only for the row matching the CURRENT session id (isCurrent),
+            // so an owner's own OTHER device/tab still showed it -- clicking
+            // it there silently signed the owner out of their current
+            // session too, since it belongs to the same user_id. Hide it for
+            // every row that belongs to the acting user, not just the
+            // current row; owners still have per-device "Revoke this
+            // session" for managing their own other devices.
+            const isSelf = who && employee && who.user_id === employee.user_id;
             const isActive = !s.revoked_at;
             return (
               <div
@@ -130,9 +146,9 @@ export default function SessionRegistry() {
                     >
                       {actionBusy === s.id ? 'Revoking…' : 'Revoke this session'}
                     </button>
-                    {isOwner && who && !isCurrent && (
+                    {isOwner && who && !isSelf && (
                       <button
-                        onClick={() => handleSignOutUserEverywhere(s.user_id)}
+                        onClick={() => handleSignOutUserEverywhere(s.user_id, who.full_name)}
                         disabled={actionBusy === s.user_id}
                         style={{ border: '1px solid #E07A6E', color: '#E07A6E' }}
                         className="text-xs px-3 py-1.5 rounded-md"

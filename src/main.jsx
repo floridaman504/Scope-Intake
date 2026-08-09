@@ -7,6 +7,7 @@ import ForgotPassword from './ForgotPassword.jsx'
 import ResetPassword from './ResetPassword.jsx'
 import Join from './Join.jsx'
 import Dashboard from './Dashboard.jsx'
+import JobsQueue from './JobsQueue.jsx'
 import SessionRegistry from './SessionRegistry.jsx'
 import NotFound from './NotFound.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
@@ -32,6 +33,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               element={
                 <ProtectedRoute allowedRoles={['owner', 'dispatcher']}>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/jobs"
+              element={
+                <ProtectedRoute allowedRoles={['owner', 'dispatcher']}>
+                  <JobsQueue />
                 </ProtectedRoute>
               }
             />

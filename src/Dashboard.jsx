@@ -1,13 +1,44 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
+import { supabase } from './supabaseClient.js';
 
 export default function Dashboard() {
   const { employee, signOut, signOutEverywhere } = useAuth();
   const [everywhereBusy, setEverywhereBusy] = useState(false);
   const [everywhereMsg, setEverywhereMsg] = useState('');
+  const [unclaimedCount, setUnclaimedCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCount = async () => {
+      const { count } = await supabase
+        .from('jobs')
+        .select('id', { count: 'exact', head: true })
+        .is('claimed_by', null);
+      if (active) setUnclaimedCount(count || 0);
+    };
+
+    loadCount();
+
+    // Live badge: updates the moment a new job lands or one gets claimed,
+    // without needing to leave the dashboard.
+    const channel = supabase
+      .channel('dashboard-jobs-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, loadCount)
+      .subscribe();
+
+    return () => { active = false; supabase.removeChannel(channel); };
+  }, []);
 
   const handleSignOutEverywhere = async () => {
+    // This is destructive and hard to undo (kills every active session,
+    // including this one) -- confirm before firing it. Flagged as missing
+    // in docs/audits/2026-08-08-frontend-health-audit.md.
+    if (!window.confirm('Sign out every device signed into your account, including this one? This cannot be undone.')) {
+      return;
+    }
     setEverywhereBusy(true);
     setEverywhereMsg('');
     try {
@@ -37,6 +68,22 @@ export default function Dashboard() {
       <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
         Role: <span style={{ color: '#C9A227' }}>{employee?.role || '—'}</span>
       </p>
+
+      <Link
+        to="/jobs"
+        style={{ backgroundColor: unclaimedCount > 0 ? '#1E1A0A' : '#161616', border: `1px solid ${unclaimedCount > 0 ? '#C9A227' : '#2A2A2A'}` }}
+        className="flex items-center justify-between gap-4 rounded-lg px-5 py-4 mb-6 max-w-sm transition-colors"
+      >
+        <div>
+          <p style={{ color: '#EDEAE3' }} className="text-sm font-semibold">Jobs</p>
+          <p style={{ color: '#9A9A9A' }} className="text-xs mt-0.5">View and claim submitted jobs</p>
+        </div>
+        {unclaimedCount > 0 && (
+          <span style={{ backgroundColor: '#E8BD3A', color: '#0A0A0A' }} className="text-xs font-bold px-2.5 py-1 rounded-full shrink-0">
+            {unclaimedCount} new
+          </span>
+        )}
+      </Link>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <button

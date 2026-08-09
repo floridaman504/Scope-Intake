@@ -1,6 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Video, MapPin, Lock, Wrench, Droplet, ChevronRight, ChevronLeft, Check, X, Upload } from 'lucide-react';
+import { Camera, Video, MapPin, Lock, Wrench, Droplet, ChevronRight, ChevronLeft, Check, X, Upload, Phone } from 'lucide-react';
 import { supabase } from './supabaseClient.js';
+
+// The subdomain this deployment serves. Scope-Intake's schema is built
+// for multi-tenant use (companies.subdomain, get_company_by_subdomain()),
+// but only one company exists today ("Demo Company" / subdomain "demo").
+// When real subdomain-based routing ships, replace this with something
+// derived from window.location.hostname instead of a constant.
+const COMPANY_SUBDOMAIN = 'demo';
 
 // ---- Question data ----
 const STEPS = [
@@ -11,6 +18,13 @@ const STEPS = [
     sub: 'Give us the short version. What did you notice, and when?',
     type: 'textarea',
     placeholder: 'e.g. "Water pooling under the kitchen sink since this morning"',
+  },
+  {
+    id: 'contact',
+    icon: Phone,
+    title: 'How can we reach you?',
+    sub: "We'll text or call to confirm details and let you know when we're on the way.",
+    type: 'contact',
   },
   {
     id: 'media',
@@ -85,8 +99,16 @@ export default function ScopeIntake() {
 
   const setAnswer = (val) => setAnswers((a) => ({ ...a, [current.id]: val }));
 
+  const contactValue = answers.contact || { name: '', phone: '', email: '' };
+  const setContactField = (field, val) =>
+    setAnswers((a) => ({ ...a, contact: { ...(a.contact || {}), [field]: val } }));
+
   const canAdvance = () => {
     if (current.type === 'media') return true; // optional but encouraged
+    if (current.type === 'contact') {
+      // Name and a phone number are the minimum bar -- email is optional.
+      return Boolean(contactValue.name?.trim()) && Boolean(contactValue.phone?.trim());
+    }
     const v = answers[current.id];
     return v !== undefined && v !== '';
   };
@@ -113,7 +135,10 @@ export default function ScopeIntake() {
     setSubmitted(true);
     setLoading(true);
     try {
-      const summary = STEPS.map((s) => `${s.title}: ${answers[s.id] || 'Not provided'}`).join('\n');
+      const summary = STEPS.map((s) => {
+        if (s.id === 'contact') return null; // contact info isn't part of the job-type summary
+        return `${s.title}: ${answers[s.id] || 'Not provided'}`;
+      }).filter(Boolean).join('\n');
 
       const response = await fetch('/api/review-job', {
         method: 'POST',
@@ -131,7 +156,22 @@ export default function ScopeIntake() {
       // Save the full job (customer answers + AI brief) to the database.
       // If this fails, we don't block the customer — they've done their part.
       try {
+        // Resolve which company this submission belongs to. This is what
+        // makes the row visible to that company's dispatchers at all --
+        // RLS on jobs filters SELECT by company_id, and without it a
+        // saved job is invisible forever even if the insert succeeds.
+        const { data: companyRows, error: companyErr } = await supabase
+          .rpc('get_company_by_subdomain', { p_subdomain: COMPANY_SUBDOMAIN });
+        if (companyErr || !companyRows || companyRows.length === 0) {
+          throw new Error('Could not resolve company for this submission: ' + (companyErr?.message || 'no match'));
+        }
+        const companyId = companyRows[0].id;
+
         await supabase.from('jobs').insert({
+          company_id: companyId,
+          customer_name: contactValue.name || null,
+          customer_phone: contactValue.phone || null,
+          customer_email: contactValue.email || null,
           context: answers.context || null,
           fixture: answers.fixture || null,
           pipe: answers.pipe || null,
@@ -139,6 +179,7 @@ export default function ScopeIntake() {
           cutting: answers.cutting || null,
           preference: answers.preference || null,
           leak_detection: answers.leak_detection || null,
+          media: media.map((m) => ({ name: m.name, type: m.type })),
           ai_job_type: parsed.jobType || null,
           ai_urgency: parsed.urgency || null,
           ai_materials: parsed.likelyMaterials || [],
@@ -238,6 +279,36 @@ export default function ScopeIntake() {
                 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
                 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
               />
+            )}
+
+            {current.type === 'contact' && (
+              <div className="flex flex-col gap-3">
+                <input
+                  autoFocus
+                  type="text"
+                  value={contactValue.name}
+                  onChange={(e) => setContactField('name', e.target.value)}
+                  placeholder="Full name"
+                  style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
+                  className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+                />
+                <input
+                  type="tel"
+                  value={contactValue.phone}
+                  onChange={(e) => setContactField('phone', e.target.value)}
+                  placeholder="Phone number"
+                  style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
+                  className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+                />
+                <input
+                  type="email"
+                  value={contactValue.email}
+                  onChange={(e) => setContactField('email', e.target.value)}
+                  placeholder="Email (optional)"
+                  style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
+                  className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+                />
+              </div>
             )}
 
             {current.type === 'choice' && (
@@ -425,12 +496,15 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
 
             <Section label="Raw customer answers">
               <div className="space-y-2">
-                {Object.entries(answers).map(([k, v]) => (
-                  <div key={k} style={{ color: '#7A7A7A', borderBottom: '1px solid #1A1A1A' }} className="text-xs flex justify-between gap-3 pb-2">
-                    <span className="capitalize">{k.replace('_', ' ')}</span>
-                    <span style={{ color: '#B8B8B8' }} className="text-right">{v}</span>
-                  </div>
-                ))}
+                {Object.entries(answers).map(([k, v]) => {
+                  if (k === 'contact') return null;
+                  return (
+                    <div key={k} style={{ color: '#7A7A7A', borderBottom: '1px solid #1A1A1A' }} className="text-xs flex justify-between gap-3 pb-2">
+                      <span className="capitalize">{k.replace('_', ' ')}</span>
+                      <span style={{ color: '#B8B8B8' }} className="text-right">{v}</span>
+                    </div>
+                  );
+                })}
               </div>
             </Section>
 
