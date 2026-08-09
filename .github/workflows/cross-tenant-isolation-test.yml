@@ -1,0 +1,57 @@
+name: Cross-tenant isolation test
+
+# Task #23 (P1, from docs/audits/2026-08-06-cross-tenant-isolation-audit.md).
+# Automates the audit's "behavioral cross-tenant test" gap: creates two
+# throwaway tenants directly in scope-staging, then proves -- against the
+# REAL RLS policies and grants, not a mock -- that Tenant A's employees can
+# never see, update, or delete Tenant B's data, and that anon can insert
+# via the public intake form but not read anything back. See
+# scripts/cross-tenant-isolation-test.mjs for exactly how (SET LOCAL ROLE +
+# request.jwt.claim.sub, the same mechanism PostgREST uses per-request).
+#
+# Runs against scope-staging ONLY -- this workflow is never given the
+# production database secret. Everything the script does happens inside a
+# single transaction it always rolls back, so staging is left exactly as
+# it started regardless of pass/fail.
+#
+# Runs on every push (fast -- one script, a handful of round trips) so a
+# migration or policy change that weakens isolation gets caught
+# immediately, not just on the next manual audit.
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  cross-tenant-isolation:
+    name: Cross-tenant isolation (scope-staging)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Verify STAGING_DB_URL is configured
+        run: |
+          if [ -z "${STAGING_DB_URL}" ]; then
+            echo "::error::Missing STAGING_DB_URL secret -- cannot run against scope-staging."
+            exit 1
+          fi
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+
+      - name: Run cross-tenant isolation test
+        run: npm run test:cross-tenant
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}

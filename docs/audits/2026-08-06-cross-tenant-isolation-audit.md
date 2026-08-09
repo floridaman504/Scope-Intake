@@ -115,3 +115,34 @@ Two ways to get this test built (your call):
    in CI on every future change instead of being a one-time manual check.
    This is the better long-term answer and overlaps with Tier 1.5 (test
    suite) — worth doing them together.
+
+### Resolved — 2026-08-09 (task #23)
+
+Went with option 2. `scripts/cross-tenant-isolation-test.mjs` connects
+directly to `scope-staging` and, inside a single transaction it always
+rolls back, creates two throwaway companies (owner + dispatcher for
+Tenant A, owner for Tenant B, two jobs each, an invite code and an
+ai_usage_log row each). For each simulated user it does exactly what
+PostgREST does per request — `SET LOCAL ROLE authenticated` (or `anon`)
+plus `SET LOCAL request.jwt.claim.sub = '<uuid>'`, which is what
+`auth.uid()` reads — so it's exercising the real policies from
+`docs/schema/production-schema-2026-08-09.sql`, not a re-implementation of
+them. Checks cover: Tenant A can't SELECT, UPDATE, or DELETE Tenant B's
+jobs/employees/invite_codes/ai_usage_log; a dispatcher can UPDATE but not
+DELETE their own company's job (role-scoped policy, not just
+company-scoped); the symmetric check from Tenant B's side; anon can INSERT
+via the public intake form but can't read anything back; and that
+`companies` stays deny-all for both roles per the zero-policies design
+above.
+
+Runs as `.github/workflows/cross-tenant-isolation-test.yml` on every push,
+every PR, and on demand. While building it, discovered that
+`sync-staging.yml`'s `--no-privileges` pg_dump flag strips ALL grants on
+every sync, not just table-level ones — `scope-staging` had lost
+`USAGE ON SCHEMA public` for `anon`/`authenticated` entirely, which fails
+as "relation does not exist" rather than a permissions error. Fixed by
+adding a "reapply grants" step to `sync-staging.yml` itself, so every
+future sync leaves staging privilege-accurate (matching production's
+task #22 minimal grants), not just shape-accurate — otherwise this test
+would have silently started failing the next time someone ran that
+workflow.
