@@ -30,7 +30,7 @@ const STEPS = [
     id: 'media',
     icon: Camera,
     title: 'Show us the issue',
-    sub: 'A photo or short video of the problem area â and any damage it caused.',
+    sub: 'A photo or short video of the problem area — and any damage it caused.',
     type: 'media',
   },
   {
@@ -53,7 +53,7 @@ const STEPS = [
     id: 'access',
     icon: Lock,
     title: 'How do we get to you?',
-    sub: 'Gate, door, elevator, or key codes â and where we should park.',
+    sub: 'Gate, door, elevator, or key codes — and where we should park.',
     type: 'textarea',
     placeholder: 'e.g. "Gate code 4471, park in driveway, ring bell twice"',
   },
@@ -63,7 +63,7 @@ const STEPS = [
     title: 'Can we cut into walls or floors?',
     sub: "If the fix requires it, do we have your OK in advance?",
     type: 'choice',
-    options: ['Yes, go ahead if needed', 'No â call me first', 'Not sure / depends'],
+    options: ['Yes, go ahead if needed', 'No — call me first', 'Not sure / depends'],
   },
   {
     id: 'preference',
@@ -77,9 +77,9 @@ const STEPS = [
     id: 'leak_detection',
     icon: Droplet,
     title: 'Has a leak already been located?',
-    sub: 'Only relevant if this is a hidden leak â e.g. a rising water meter with no visible water.',
+    sub: 'Only relevant if this is a hidden leak — e.g. a rising water meter with no visible water.',
     type: 'choice',
-    options: ['Leak detection already done', 'Not done yet', 'Not applicable â leak is visible'],
+    options: ['Leak detection already done', 'Not done yet', 'Not applicable — leak is visible'],
   },
 ];
 
@@ -154,7 +154,7 @@ export default function ScopeIntake() {
       setAiBrief(parsed);
 
       // Save the full job (customer answers + AI brief) to the database.
-      // If this fails, we don't block the customer â they've done their part.
+      // If this fails, we don't block the customer — they've done their part.
       try {
         // Resolve which company this submission belongs to. This is what
         // makes the row visible to that company's dispatchers at all --
@@ -197,7 +197,7 @@ export default function ScopeIntake() {
         urgency: 'Unknown',
         likelyMaterials: [],
         briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
-        watchOutFor: 'â',
+        watchOutFor: '—',
       });
     } finally {
       setLoading(false);
@@ -365,23 +365,23 @@ export default function ScopeIntake() {
                   <div className="grid grid-cols-3 gap-2 mt-4">
                     {media.map((m, i) => (
                       <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
-                      {m.type === 'image' ? (
-                        <img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Video size={20} style={{ color: '#C9A227' }} />
-                        </div>
-                      )}
-                      <button
-                        onClick={() => removeMedia(i)}
-                        aria-label={`Remove ${m.type === 'video' ? 'video' : 'photo'} ${i + 1}`}
-                        style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
-                        className="rounded-full p-1"
-                      >
-                        <X size={12} style={{ color: '#FFFFFF' }} />
-                      </button>
-                    </div>
-                  ))}
+                        {m.type === 'image' ? (
+                          <img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Video size={20} style={{ color: '#C9A227' }} />
+                          </div>
+                        )}
+                        <button
+                          onClick={() => removeMedia(i)}
+                          aria-label={`Remove ${m.type === 'video' ? 'video' : 'photo'} ${i + 1}`}
+                          style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
+                          className="rounded-full p-1"
+                        >
+                          <X size={12} style={{ color: '#FFFFFF' }} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <p style={{ color: '#9A9A9A' }} className="text-xs mt-3">Optional, but the plumber will thank you.</p>
@@ -448,7 +448,7 @@ function ResultScreen({ loading, brief, answers, media, onReset }) {
           </div>
         ) : (
           <>
-            <div style={{ color: '#C9A227' }} className="text-xs tracking-[0.2em] mb-2 font-medium">JOB BRIEF â READY FOR DISPATCH</div>
+            <div style={{ color: '#C9A227' }} className="text-xs tracking-[0.2em] mb-2 font-medium">JOB BRIEF — READY FOR DISPATCH</div>
             <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-6">{brief?.jobType}</h1>
 
             <div className="flex items-center gap-2 mb-6">

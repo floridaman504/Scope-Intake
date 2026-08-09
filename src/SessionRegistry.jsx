@@ -82,7 +82,7 @@ export default function SessionRegistry() {
       </div>
 
       <h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-1">
-        {isOwner ? 'Active Sessions â Your Team' : 'Your Active Sessions'}
+        {isOwner ? 'Active Sessions — Your Team' : 'Your Active Sessions'}
       </h1>
       <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
         {isOwner
@@ -92,7 +92,7 @@ export default function SessionRegistry() {
 
       {error && <p style={{ color: '#E07A6E' }} className="text-sm mb-4">{error}</p>}
       {loading ? (
-        <p style={{ color: '#C4C4C4' }} className="text-sm">Loadingâ¦</p>
+        <p style={{ color: '#C4C4C4' }} className="text-sm">Loading…</p>
       ) : (
         <div className="space-y-3">
           {sessions.length === 0 && (
@@ -130,7 +130,7 @@ export default function SessionRegistry() {
                     <p style={{ color: '#C4C4C4' }} className="text-xs">{s.device_label || 'Unknown device'}</p>
                   )}
                   <p style={{ color: '#9A9A9A' }} className="text-xs mt-1">
-                    IP: {s.ip_address || 'unknown'} Â· Last active: {new Date(s.last_activity_at).toLocaleString()} Â· Signed in: {new Date(s.created_at).toLocaleString()}
+                    IP: {s.ip_address || 'unknown'} · Last active: {new Date(s.last_activity_at).toLocaleString()} · Signed in: {new Date(s.created_at).toLocaleString()}
                   </p>
                   <p style={{ color: isActive ? '#7FBF7F' : '#E07A6E' }} className="text-xs mt-1">
                     {isActive ? 'Active' : `Revoked (${s.revoked_reason || 'unknown reason'}) at ${new Date(s.revoked_at).toLocaleString()}`}
@@ -144,7 +144,7 @@ export default function SessionRegistry() {
                       style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
                       className="text-xs px-3 py-1.5 rounded-md"
                     >
-                      {actionBusy === s.id ? 'Revokingâ¦' : 'Revoke this session'}
+                      {actionBusy === s.id ? 'Revoking…' : 'Revoke this session'}
                     </button>
                     {isOwner && who && !isSelf && (
                       <button

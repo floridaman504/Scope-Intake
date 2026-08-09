@@ -63,10 +63,10 @@ export default function Dashboard() {
         You're logged in.
       </h1>
       <p style={{ color: '#C4C4C4' }} className="text-sm mb-1">
-        Name: {employee?.full_name || 'â'}
+        Name: {employee?.full_name || '—'}
       </p>
       <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
-        Role: <span style={{ color: '#C9A227' }}>{employee?.role || 'â'}</span>
+        Role: <span style={{ color: '#C9A227' }}>{employee?.role || '—'}</span>
       </p>
 
       <Link
@@ -106,7 +106,7 @@ export default function Dashboard() {
           style={{ border: '1px solid #E07A6E', color: '#E07A6E' }}
           className="text-sm px-4 py-2 rounded-md"
         >
-          {everywhereBusy ? 'Signing out everywhereâ¦' : 'Sign out everywhere'}
+          {everywhereBusy ? 'Signing out everywhere…' : 'Sign out everywhere'}
         </button>
       </div>
       {everywhereMsg && (

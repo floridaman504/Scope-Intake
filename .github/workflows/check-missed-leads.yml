@@ -1,0 +1,19 @@
+name: Check missed leads
+
+# Vercel's Hobby plan caps Cron Jobs at once per day, which defeats the
+# point of a one-hour missed-lead escalation. This workflow calls the
+# same API route on a real schedule instead -- GitHub Actions scheduled
+# workflows are free and have no such cap.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call missed-lead check endpoint
+        run: |
+          curl -sf -X POST "https://scope-intake.vercel.app/api/check-missed-leads" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
