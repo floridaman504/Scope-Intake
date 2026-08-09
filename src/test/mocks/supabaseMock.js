@@ -35,6 +35,7 @@ export const mockSupabase = {
     signUp: vi.fn(),
     signOut: vi.fn(),
     updateUser: vi.fn(),
+    resetPasswordForEmail: vi.fn(),
     onAuthStateChange: vi.fn(),
   },
   from: vi.fn(),
@@ -75,6 +76,7 @@ export function resetSupabaseMock() {
   mockSupabase.auth.signUp.mockReset().mockResolvedValue({ data: {}, error: null });
   mockSupabase.auth.signOut.mockReset().mockResolvedValue({ error: null });
   mockSupabase.auth.updateUser.mockReset().mockResolvedValue({ data: {}, error: null });
+  mockSupabase.auth.resetPasswordForEmail.mockReset().mockResolvedValue({ data: {}, error: null });
   mockSupabase.auth.onAuthStateChange.mockReset().mockImplementation((cb) => {
     authStateListeners.push(cb);
     return { data: { subscription: { unsubscribe: vi.fn() } } };

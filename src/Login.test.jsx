@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Login from './Login.jsx';
 import { renderWithProviders, Route } from './test/utils.jsx';
-import { mockSupabase, resetSupabaseMock } from './test/mocks/supabaseMock.js';
+import { mockSupabase, resetSupabaseMock, setRpcResponse } from './test/mocks/supabaseMock.js';
 
 vi.mock('./supabaseClient.js', async () => {
   const { mockSupabase } = await import('./test/mocks/supabaseMock.js');
@@ -194,5 +194,79 @@ describe('Login', () => {
     await fillAndSubmit(user);
 
     await waitFor(() => expect(screen.getByText('DASHBOARD_STUB')).toBeInTheDocument());
+  });
+
+  // --- Tier 1.5: account lockout after repeated failed attempts ----------
+  describe('account lockout', () => {
+    it('shows a "Forgot password?" link that points to /forgot-password', async () => {
+      await renderLogin();
+      const link = screen.getByRole('link', { name: /forgot password/i });
+      expect(link).toHaveAttribute('href', '/forgot-password');
+    });
+
+    it('checks check_login_allowed before attempting sign-in', async () => {
+      const user = userEvent.setup();
+      mockSupabase.auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+      await renderLogin();
+
+      await fillAndSubmit(user, { email: 'dispatcher@scope.test', password: 'testpw1' });
+
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('check_login_allowed', { p_email: 'dispatcher@scope.test' });
+    });
+
+    it('blocks the sign-in attempt and shows a countdown when the account is locked', async () => {
+      const user = userEvent.setup();
+      const lockedUntil = new Date(Date.now() + 7 * 60 * 1000).toISOString(); // 7 min out
+      setRpcResponse('check_login_allowed', { data: [{ allowed: false, locked_until: lockedUntil }], error: null });
+      await renderLogin();
+
+      await fillAndSubmit(user, { email: 'locked@scope.test', password: 'whatever1' });
+
+      expect(await screen.findByText(/too many failed attempts/i)).toBeInTheDocument();
+      expect(screen.getByText(/try again in 7 minutes/i)).toBeInTheDocument();
+      // The real credential check never happens once locked out.
+      expect(mockSupabase.auth.signInWithPassword).not.toHaveBeenCalled();
+    });
+
+    it('records a failed attempt via record_failed_login when the password is wrong', async () => {
+      const user = userEvent.setup();
+      setRpcResponse('check_login_allowed', { data: [{ allowed: true, locked_until: null }], error: null });
+      mockSupabase.auth.signInWithPassword.mockResolvedValue({
+        data: {},
+        error: { message: 'Invalid login credentials' },
+      });
+      await renderLogin();
+
+      await fillAndSubmit(user, { email: 'dispatcher@scope.test', password: 'wrongpw1' });
+
+      await screen.findByText('Incorrect email or password.');
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('record_failed_login', { p_email: 'dispatcher@scope.test' });
+    });
+
+    it('clears the failed-attempt count via clear_login_attempts on a successful sign-in', async () => {
+      const user = userEvent.setup();
+      setRpcResponse('check_login_allowed', { data: [{ allowed: true, locked_until: null }], error: null });
+      mockSupabase.auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+      await renderLogin();
+
+      await fillAndSubmit(user, { email: 'dispatcher@scope.test', password: 'testpw1' });
+
+      await waitFor(() => expect(screen.getByText('DASHBOARD_STUB')).toBeInTheDocument());
+      expect(mockSupabase.rpc).toHaveBeenCalledWith('clear_login_attempts', { p_email: 'dispatcher@scope.test' });
+    });
+
+    it('fails open (still attempts sign-in) if the lockout check RPC itself errors', async () => {
+      const user = userEvent.setup();
+      setRpcResponse('check_login_allowed', { data: null, error: { message: 'function not found' } });
+      mockSupabase.auth.signInWithPassword.mockResolvedValue({ data: { user: { id: 'u1' } }, error: null });
+      await renderLogin();
+
+      await fillAndSubmit(user, { email: 'dispatcher@scope.test', password: 'testpw1' });
+
+      // An outage in the lockout system must never be the reason a real
+      // login fails -- the sign-in attempt still goes through.
+      expect(mockSupabase.auth.signInWithPassword).toHaveBeenCalled();
+      await waitFor(() => expect(screen.getByText('DASHBOARD_STUB')).toBeInTheDocument());
+    });
   });
 });
