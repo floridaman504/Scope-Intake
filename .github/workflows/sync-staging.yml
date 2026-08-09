@@ -126,3 +126,42 @@ jobs:
             exit 1
           fi
           echo "Staging schema matches production. Safe to test migrations here."
+
+      - name: Reapply anon/authenticated grants (privileges are NOT part of a --no-privileges dump)
+        # pg_dump/pg_restore ran above with --no-owner --no-privileges on
+        # purpose (see the dump step) -- that means EVERY grant, including
+        # schema-level `USAGE ON SCHEMA public`, gets stripped on every
+        # single sync, not just table-level SELECT/INSERT/etc. Discovered
+        # while building the Task #23 cross-tenant isolation test: staging
+        # had no USAGE on schema public for anon/authenticated at all,
+        # which made every table lookup fail with "relation does not
+        # exist" (not a permissions error -- Postgres can't even resolve
+        # the name without schema USAGE) even though the task #22 grants
+        # below looked correct.
+        #
+        # This mirrors production's minimal-privilege grants from task #22
+        # exactly (see docs/schema/production-schema-2026-08-09.sql and the
+        # audit) so staging stays privilege-accurate after every sync, not
+        # just shape-accurate -- otherwise the cross-tenant isolation test
+        # (and anyone testing migrations here) silently breaks the next
+        # time this workflow runs.
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          /usr/lib/postgresql/17/bin/psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          grant usage on schema public to anon, authenticated;
+
+          revoke all on all tables in schema public from anon, authenticated;
+
+          grant insert on public.jobs to anon;
+          grant select, insert, update, delete on public.jobs to authenticated;
+          grant select on public.employees to authenticated;
+          grant select on public.user_sessions to authenticated;
+          grant select on public.session_policy to authenticated;
+          grant select, insert on public.invite_codes to authenticated;
+          grant select on public.ai_usage_log to authenticated;
+          -- companies, billing_guardrails, login_attempts intentionally
+          -- receive zero anon/authenticated grants -- see task #22.
+          SQL
+          echo "Grants reapplied to match production's minimal-privilege scheme."

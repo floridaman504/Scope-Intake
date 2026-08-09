@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:unit": "vitest run --exclude \"**/test/integration/**\"",
     "test:integration": "vitest run src/test/integration",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:cross-tenant": "node scripts/cross-tenant-isolation-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -30,6 +31,7 @@
     "autoprefixer": "^10.4.19",
     "husky": "^9.1.7",
     "jsdom": "^30.0.1",
+    "pg": "^8.23.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
     "vite": "^5.2.0",
