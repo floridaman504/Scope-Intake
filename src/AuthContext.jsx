@@ -35,7 +35,7 @@ const SESSION_ID_STORAGE_KEY = 'scope_session_id';
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [employee, setEmployee] = useState(null); // { role, full_name, email }
+  const [employee, setEmployee] = useState(null); // { id, user_id, role, full_name, email }
   const [loading, setLoading] = useState(true);
   const [sessionId, setSessionId] = useState(null);
   const [sessionWarning, setSessionWarning] = useState({ visible: false, secondsLeft: 0 });
@@ -59,9 +59,19 @@ export function AuthProvider({ children }) {
       setEmployee(null);
       return;
     }
+    // id and user_id are both included (not just role/full_name/email):
+    // - id is the employees-table primary key, needed anywhere the app
+    //   writes a foreign key back to employees (e.g. JobsQueue.jsx sets
+    //   jobs.claimed_by = employee.id -- claimed_by references
+    //   employees(id), NOT the auth user id, so this was missing before
+    //   and Claim silently failed to persist who claimed a job).
+    // - user_id lets callers like SessionRegistry.jsx tell "is this row
+    //   one of MY OWN other devices" apart from "is this a different
+    //   employee entirely" -- see the isSelf check there for why that
+    //   distinction matters for the Sign Out Everywhere button.
     const { data, error } = await supabase
       .from('employees')
-      .select('role, full_name, email')
+      .select('id, user_id, role, full_name, email')
       .eq('user_id', userId)
       .single();
     setEmployee(!error && data ? data : null);
@@ -337,14 +347,36 @@ export function AuthProvider({ children }) {
   // button, or after a password change) and owner-callable against any
   // employee in their own company (suspicious-activity flag, manual admin
   // action). See sign_out_everywhere() in supabase_session_hardening.sql.
+  //
+  // BUGFIX (2026-08-09): sign_out_everywhere() on the server treats a
+  // null/omitted target, OR a target that resolves to the caller's own
+  // user id, as "wipe every one of MY OWN sessions" -- and that includes
+  // the very session this tab is using. Before this fix, calling this from
+  // the client (e.g. an owner clicking "Sign out everywhere" on one of
+  // their OWN other devices in SessionRegistry.jsx) would silently revoke
+  // the caller's current session server-side too, but this tab had no idea
+  // until the next backstop poll or realtime event caught up -- up to
+  // BACKSTOP_POLL_INTERVAL_MS of the UI looking "still logged in" while
+  // actually already revoked. Detect the self-targeting case and clean up
+  // locally right away instead of waiting on the poll/realtime fallback.
   const signOutEverywhere = useCallback(async (targetUserId) => {
     const { data, error } = await supabase.rpc(
       'sign_out_everywhere',
       targetUserId ? { p_target_user_id: targetUserId } : {}
     );
     if (error) throw error;
+
+    const targetsSelf = !targetUserId || targetUserId === session?.user?.id;
+    if (targetsSelf) {
+      weInitiatedSignOutRef.current = true;
+      clearSessionRegistration();
+      await supabase.auth.signOut();
+      setSession(null);
+      setEmployee(null);
+    }
+
     return data;
-  }, []);
+  }, [session]);
 
   // Ready for a future "change password" UI -- none exists in the app yet.
   // Revokes every session (including this one) so the new password is
