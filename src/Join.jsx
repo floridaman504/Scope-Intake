@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
 import { recordActivity } from './activityTracking.js';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function Join() {
   const [code, setCode] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -122,15 +124,26 @@ export default function Join() {
           </div>
           <div>
             <label style={{ color: '#9A9A9A' }} className="text-xs mb-1.5 block">Create a Password</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
+                className="w-full rounded-lg pl-4 pr-12 py-3 outline-none text-base"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                style={{ color: '#454545' }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
+              >
+                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
 
           {error && (
