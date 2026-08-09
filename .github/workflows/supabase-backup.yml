@@ -89,7 +89,7 @@ jobs:
           echo "STAMP=$STAMP" >> "$GITHUB_ENV"
           # Custom format: compressed, and restorable selectively with
           # pg_restore -- not a plain-text SQL file.
-          pg_dump "$SUPABASE_DB_URL" -Fc --no-owner --no-privileges -f "scope-$STAMP.dump"
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" -Fc --no-owner --no-privileges -f "scope-$STAMP.dump"
           SIZE=$(stat -c%s "scope-$STAMP.dump")
           echo "Dump size: $SIZE bytes"
           # A near-empty dump almost always means auth failed silently or
@@ -109,7 +109,7 @@ jobs:
           # pg_restore --list parses the archive's table of contents without
           # needing a live database connection -- catches a truncated or
           # corrupt dump before it ever gets encrypted and shipped.
-          pg_restore --list "scope-$STAMP.dump" > /tmp/toc.txt
+          /usr/lib/postgresql/17/bin/pg_restore --list "scope-$STAMP.dump" > /tmp/toc.txt
           echo "Dump TOC entries: $(wc -l < /tmp/toc.txt)"
           for table in companies employees jobs invite_codes ai_usage_log billing_guardrails; do
             if ! grep -q "TABLE DATA public $table" /tmp/toc.txt; then
