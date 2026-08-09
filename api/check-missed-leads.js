@@ -66,6 +66,8 @@ export default async function handler(req, res) {
     }
 
     let alerted = 0;
+    let failed = 0;
+    const failures = [];
 
     for (const job of overdueJobs) {
       // Recipients: owners and dispatchers at this job's company.
@@ -81,18 +83,31 @@ export default async function handler(req, res) {
       const recipients = await employeesRes.json();
       const emails = (recipients || []).map((r) => r.email).filter(Boolean);
 
+      // BUGFIX (2026-08-09): this used to fire the Resend request and mark
+      // missed_lead_alert_sent_at unconditionally, without ever checking
+      // whether the send actually succeeded. The first real run against
+      // production found 13 overdue jobs, Resend rejected every send with
+      // 403 (onboarding@resend.dev can only deliver to the account's own
+      // address -- a verified sending domain is required for real
+      // recipients), and all 13 got silently marked as "alerted" anyway.
+      // No one was notified and the cron would never have retried them.
+      // Now: only mark sent when there were no recipients to notify (that
+      // case is intentionally not retried -- see below) or the send
+      // request came back ok. A failed send leaves the row unmarked so
+      // the next cron run tries again once the sender is fixed.
+      let sendOk = true;
       if (emails.length > 0) {
         const ageMinutes = Math.floor((Date.now() - new Date(job.created_at).getTime()) / 60000);
-        await fetch('https://api.resend.com/emails', {
+        const emailRes = await fetch('https://api.resend.com/emails', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${resendKey}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            // Resend's shared sandbox sender -- works with no domain setup.
-            // Swap for a verified address on your own domain once you've
-            // added one in Resend.
+            // Resend's shared sandbox sender -- only deliverable to the
+            // account's own address. Swap for a verified address on your
+            // own domain in Resend before this can reach real recipients.
             from: 'Scope Alerts <onboarding@resend.dev>',
             to: emails,
             subject: `Missed lead: ${job.ai_job_type || 'a job'} unclaimed for ${ageMinutes} min`,
@@ -105,26 +120,33 @@ export default async function handler(req, res) {
             `,
           }),
         });
+        sendOk = emailRes.ok;
+        if (!sendOk) {
+          failed += 1;
+          failures.push({ jobId: job.id, status: emailRes.status });
+        }
       }
 
-      // Mark alerted regardless of whether we found recipients -- an
-      // empty employees table for this company shouldn't cause this job
-      // to be retried forever on every cron run.
-      await fetch(`${supabaseUrl}/rest/v1/jobs?id=eq.${job.id}`, {
-        method: 'PATCH',
-        headers: {
-          apikey: serviceKey,
-          Authorization: `Bearer ${serviceKey}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({ missed_lead_alert_sent_at: new Date().toISOString() }),
-      });
-
-      alerted += 1;
+      // Mark alerted when there were no recipients to notify (an empty
+      // employees table for this company shouldn't cause this job to be
+      // retried forever on every cron run) or when the send succeeded.
+      // A failed send with recipients present is left unmarked for retry.
+      if (sendOk) {
+        await fetch(`${supabaseUrl}/rest/v1/jobs?id=eq.${job.id}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({ missed_lead_alert_sent_at: new Date().toISOString() }),
+        });
+        alerted += 1;
+      }
     }
 
-    return res.status(200).json({ checked: overdueJobs.length, alerted });
+    return res.status(200).json({ checked: overdueJobs.length, alerted, failed, failures });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
