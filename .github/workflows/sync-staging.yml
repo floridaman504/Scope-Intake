@@ -1,0 +1,112 @@
+name: Sync staging schema from production
+
+# Tier 1.7 (migration safety). Copies production's SCHEMA ONLY -- table
+# definitions, columns, functions, RLS policies, triggers, indexes -- into
+# the separate "scope-staging" Supabase project. Deliberately does NOT copy
+# any customer data (jobs, employees, companies), so staging always contains
+# zero real plumbing-customer records even though it's a lower-security
+# environment than production.
+#
+# Use this before running any schema change (new column, new table, altered
+# constraint) against production:
+#   1. Run this workflow manually (Actions tab > Sync staging schema > Run
+#      workflow) to make sure staging matches production's current shape.
+#   2. Run your migration + rollback against STAGING_DB_URL first. Confirm
+#      the app still works and the rollback actually reverses it.
+#   3. Only then run the migration against production.
+#
+# See docs/migration-safety-playbook.md for the full expand-contract
+# process and rollback template.
+#
+# One-time setup (already done): repo secret STAGING_DB_URL, pointing at the
+# scope-staging Supabase project's session pooler connection string.
+
+on:
+  workflow_dispatch: {} # manual only -- this is a deliberate step you take, not a schedule
+
+permissions:
+  contents: read
+
+jobs:
+  sync-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify secrets are configured
+        run: |
+          missing=0
+          for name in SUPABASE_DB_URL STAGING_DB_URL; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" = "1" ]; then
+            exit 1
+          fi
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+
+      - name: Install postgresql-client (v17, to match Supabase's Postgres server)
+        # Same fix as the backup workflow -- ubuntu-latest's default apt
+        # repo only ships client v16, but Supabase runs Postgres 17.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+
+      - name: Dump production schema (public schema only, no data)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          # --schema-only: no customer data, structure only.
+          # --schema=public: skip Supabase's own auth/storage/realtime
+          # schemas -- those already exist identically in every fresh
+          # Supabase project and restoring over them isn't safe or needed.
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" \
+            --schema-only --schema=public --no-owner --no-privileges \
+            -Fc -f schema.dump
+          SIZE=$(stat -c%s "schema.dump")
+          echo "Schema dump size: $SIZE bytes"
+          if [ "$SIZE" -lt 500 ]; then
+            echo "::error::Schema dump is suspiciously small ($SIZE bytes) -- refusing to restore. Check SUPABASE_DB_URL."
+            exit 1
+          fi
+
+      - name: Restore schema into staging
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          # --clean --if-exists: drop-and-recreate each object so staging
+          # ends up EXACTLY matching production's current shape, even if
+          # staging already had an older/different version of something.
+          # --if-exists means the very first run (empty staging) doesn't
+          # fail just because there's nothing yet to drop.
+          /usr/lib/postgresql/17/bin/pg_restore \
+            --clean --if-exists --no-owner --no-privileges \
+            -d "$STAGING_DB_URL" schema.dump
+
+      - name: Verify staging matches production's table list
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          query="select string_agg(table_name, ',' order by table_name) from information_schema.tables where table_schema='public';"
+          prod_tables=$(/usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -tAc "$query")
+          staging_tables=$(/usr/lib/postgresql/17/bin/psql "$STAGING_DB_URL" -tAc "$query")
+          echo "Production tables: $prod_tables"
+          echo "Staging tables:    $staging_tables"
+          if [ "$prod_tables" != "$staging_tables" ]; then
+            echo "::error::Staging's table list does not match production after sync -- restore likely failed partway through."
+            exit 1
+          fi
+          echo "Staging schema matches production. Safe to test migrations here."
