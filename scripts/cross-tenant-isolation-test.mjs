@@ -266,10 +266,18 @@ async function main() {
   // ---- Act + Assert, as Tenant A's dispatcher (can UPDATE, cannot DELETE) ----
   await asRole('authenticated', IDS.dispatcherA);
 
-  await client.query(`update jobs set status = 'claimed' where id = $1`, [IDS.jobA1]);
+  // Uses 'assigned' (not the old arbitrary probe value 'claimed') because
+  // task #24's migration added a CHECK constraint on jobs.status limiting
+  // it to the real workflow values (new/assigned/in_progress/done/
+  // cancelled) -- 'claimed' was never a real status, just a convenient
+  // throwaway string to prove UPDATE works, and it now fails the
+  // constraint. 'assigned' proves the exact same thing (dispatcher CAN
+  // update an arbitrary column on their own company's job) while also
+  // being a real, valid status value.
+  await client.query(`update jobs set status = 'assigned' where id = $1`, [IDS.jobA1]);
   check(
     "tenant_a_dispatcher CAN update tenant A's own job (role permits UPDATE)",
-    await scalar(`select count(*) from jobs where id = $1 and status = 'claimed'`, [IDS.jobA1]),
+    await scalar(`select count(*) from jobs where id = $1 and status = 'assigned'`, [IDS.jobA1]),
     '1'
   );
 
