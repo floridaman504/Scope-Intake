@@ -24,16 +24,56 @@ export default function Login() {
   const expiredReason = searchParams.get('expired') === '1' ? searchParams.get('reason') : null;
   const expiredMessage = expiredReason && (EXPIRY_MESSAGES[expiredReason] || 'You were signed out.');
 
+  const lockoutMessage = (lockedUntil) => {
+    const minutes = Math.max(1, Math.ceil((new Date(lockedUntil).getTime() - Date.now()) / 60000));
+    return `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    // Server-side lockout check, ahead of the real sign-in attempt.
+    // Fails OPEN (allows the attempt) if this RPC itself is unreachable --
+    // an outage in the lockout system should never be the reason a
+    // legitimate user can't sign in. See docs/migrations/2026-08-08-login-
+    // lockout.sql for the full design (including the known
+    // limitation: this is keyed on email alone, not IP, so it raises the
+    // bar against naive password guessing but isn't a complete defense
+    // against someone deliberately locking out a known account).
+    try {
+      const { data, error: lockoutErr } = await supabase.rpc('check_login_allowed', { p_email: email });
+      const row = Array.isArray(data) ? data[0] : data;
+      if (!lockoutErr && row && row.allowed === false) {
+        setLoading(false);
+        setError(lockoutMessage(row.locked_until));
+        return;
+      }
+    } catch (e) {
+      // RPC unavailable -- proceed to the real sign-in attempt.
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
+
     if (error) {
+      setLoading(false);
       setError('Incorrect email or password.');
+      try {
+        await supabase.rpc('record_failed_login', { p_email: email });
+      } catch (e) {
+        // best-effort -- a failure here shouldn't change what the user sees
+      }
       return;
     }
+
+    try {
+      await supabase.rpc('clear_login_attempts', { p_email: email });
+    } catch (e) {
+      // best-effort
+    }
+
+    setLoading(false);
 
     // Restore the page the user was on before an expiry/revocation/direct
     // link redirect, if we have one and it's still fresh. Only ever
@@ -83,7 +123,10 @@ export default function Login() {
             />
           </div>
           <div>
-            <label style={{ color: '#C4C4C4' }} className="text-xs mb-1.5 block">Password</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label style={{ color: '#C4C4C4' }} className="text-xs block">Password</label>
+              <Link to="/forgot-password" style={{ color: '#C9A227' }} className="text-xs">Forgot password?</Link>
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}

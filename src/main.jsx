@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import ScopeIntake from './ScopeIntake.jsx'
 import Login from './Login.jsx'
+import ForgotPassword from './ForgotPassword.jsx'
+import ResetPassword from './ResetPassword.jsx'
 import Join from './Join.jsx'
 import Dashboard from './Dashboard.jsx'
 import SessionRegistry from './SessionRegistry.jsx'
@@ -19,6 +21,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Routes>
           <Route path="/" element={<ScopeIntake />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/join" element={<Join />} />
           <Route
             path="/dashboard"

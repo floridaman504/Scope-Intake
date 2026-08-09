@@ -25,6 +25,8 @@ export default defineConfig({
       include: [
         'src/AuthContext.jsx',
         'src/Login.jsx',
+        'src/ForgotPassword.jsx',
+        'src/ResetPassword.jsx',
         'src/Join.jsx',
         'src/ProtectedRoute.jsx',
         'src/sessionConfig.js',
