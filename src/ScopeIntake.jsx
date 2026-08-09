@@ -134,6 +134,16 @@ export default function ScopeIntake() {
   const handleSubmit = async () => {
     setSubmitted(true);
     setLoading(true);
+
+    // AI brief generation and job persistence are deliberately decoupled
+    // below: the AI call can fail for reasons that have nothing to do with
+    // this customer (Anthropic outage, or -- now that the cost guardrail
+    // is wired in -- a rate limit tripped by someone else entirely). None
+    // of that should cost this customer their submission. A worse AI brief
+    // is a UX downgrade; a lost job is a lost lead. So: always try to save
+    // the job, using the real brief if we got one and a clearly-labeled
+    // fallback if we didn't.
+    let brief;
     try {
       const summary = STEPS.map((s) => {
         if (s.id === 'contact') return null; // contact info isn't part of the job-type summary
@@ -147,58 +157,61 @@ export default function ScopeIntake() {
           summary,
           mediaCount: media.length,
           mediaTypes: media.map((m) => m.type).join(', ') || 'none',
+          subdomain: COMPANY_SUBDOMAIN,
         }),
       });
       const parsed = await response.json();
       if (parsed.error) throw new Error(parsed.error);
-      setAiBrief(parsed);
-
-      // Save the full job (customer answers + AI brief) to the database.
-      // If this fails, we don't block the customer — they've done their part.
-      try {
-        // Resolve which company this submission belongs to. This is what
-        // makes the row visible to that company's dispatchers at all --
-        // RLS on jobs filters SELECT by company_id, and without it a
-        // saved job is invisible forever even if the insert succeeds.
-        const { data: companyRows, error: companyErr } = await supabase
-          .rpc('get_company_by_subdomain', { p_subdomain: COMPANY_SUBDOMAIN });
-        if (companyErr || !companyRows || companyRows.length === 0) {
-          throw new Error('Could not resolve company for this submission: ' + (companyErr?.message || 'no match'));
-        }
-        const companyId = companyRows[0].id;
-
-        await supabase.from('jobs').insert({
-          company_id: companyId,
-          customer_name: contactValue.name || null,
-          customer_phone: contactValue.phone || null,
-          customer_email: contactValue.email || null,
-          context: answers.context || null,
-          fixture: answers.fixture || null,
-          pipe: answers.pipe || null,
-          access: answers.access || null,
-          cutting: answers.cutting || null,
-          preference: answers.preference || null,
-          leak_detection: answers.leak_detection || null,
-          media: media.map((m) => ({ name: m.name, type: m.type })),
-          ai_job_type: parsed.jobType || null,
-          ai_urgency: parsed.urgency || null,
-          ai_materials: parsed.likelyMaterials || [],
-          ai_summary: parsed.briefSummary || null,
-          ai_watch_out: parsed.watchOutFor || null,
-          status: 'new',
-        });
-      } catch (dbErr) {
-        // Saving failed silently for the customer; logged for us.
-        console.error('Could not save job to database:', dbErr);
-      }
+      brief = parsed;
     } catch (err) {
-      setAiBrief({
+      brief = {
         jobType: 'Unable to generate brief',
         urgency: 'Unknown',
         likelyMaterials: [],
         briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
         watchOutFor: '—',
+      };
+    }
+    setAiBrief(brief);
+
+    // Save the full job (customer answers + whichever brief we ended up
+    // with) to the database. If this fails, we don't block the customer --
+    // they've done their part.
+    try {
+      // Resolve which company this submission belongs to. This is what
+      // makes the row visible to that company's dispatchers at all --
+      // RLS on jobs filters SELECT by company_id, and without it a
+      // saved job is invisible forever even if the insert succeeds.
+      const { data: companyRows, error: companyErr } = await supabase
+        .rpc('get_company_by_subdomain', { p_subdomain: COMPANY_SUBDOMAIN });
+      if (companyErr || !companyRows || companyRows.length === 0) {
+        throw new Error('Could not resolve company for this submission: ' + (companyErr?.message || 'no match'));
+      }
+      const companyId = companyRows[0].id;
+
+      await supabase.from('jobs').insert({
+        company_id: companyId,
+        customer_name: contactValue.name || null,
+        customer_phone: contactValue.phone || null,
+        customer_email: contactValue.email || null,
+        context: answers.context || null,
+        fixture: answers.fixture || null,
+        pipe: answers.pipe || null,
+        access: answers.access || null,
+        cutting: answers.cutting || null,
+        preference: answers.preference || null,
+        leak_detection: answers.leak_detection || null,
+        media: media.map((m) => ({ name: m.name, type: m.type })),
+        ai_job_type: brief.jobType || null,
+        ai_urgency: brief.urgency || null,
+        ai_materials: brief.likelyMaterials || [],
+        ai_summary: brief.briefSummary || null,
+        ai_watch_out: brief.watchOutFor || null,
+        status: 'new',
       });
+    } catch (dbErr) {
+      // Saving failed silently for the customer; logged for us.
+      console.error('Could not save job to database:', dbErr);
     } finally {
       setLoading(false);
     }
