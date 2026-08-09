@@ -310,11 +310,18 @@ async function main() {
     `insert into jobs (id, company_id, customer_name, context) values ($1, $2, 'CI Anon Job', 'citest-anon')`,
     ['00000000-1a00-0000-0000-00000000a0aa', IDS.companyA]
   );
+  // Same reasoning as the DELETE/UPDATE verifications above: anon has no
+  // SELECT grant on jobs at all, not even for the row it just inserted
+  // itself, so verifying the INSERT actually landed has to go through the
+  // privileged postgres role -- then switch back to anon to check that
+  // anon really can't read it back either.
+  await asPostgres();
   check(
     'anon INSERT into jobs for a real company succeeds (public intake form path)',
     await scalar(`select count(*) from jobs where id = '00000000-1a00-0000-0000-00000000a0aa'`),
     '1'
   );
+  await asRole('anon', null);
 
   // Same category as the companies check above -- anon has ZERO SELECT
   // grant on jobs at all (task #22 only granted it INSERT), so this is an
