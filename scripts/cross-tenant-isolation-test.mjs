@@ -78,6 +78,25 @@ async function scalar(sql, params) {
   return val;
 }
 
+// For checks that expect a query to be REJECTED outright (permission
+// denied on a table with zero grants, e.g. `companies`) rather than
+// merely returning zero rows (the RLS-filtered case, which `scalar()`
+// above handles fine). A raw failed query aborts the whole Postgres
+// transaction -- every later statement fails with "current transaction
+// is aborted" until a ROLLBACK -- so this wraps the attempt in a
+// SAVEPOINT and rolls back to it on the expected error, letting the rest
+// of the test's single BEGIN...ROLLBACK transaction keep going.
+async function expectDenied(sql, params) {
+  await client.query('savepoint expect_denied;');
+  try {
+    await client.query(sql, params);
+    return false; // no error was thrown -- the check should fail
+  } catch (err) {
+    await client.query('rollback to savepoint expect_denied;');
+    return err.code === '42501'; // permission denied
+  }
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLE_RE = /^[a-z_]+$/;
 
@@ -203,10 +222,18 @@ async function main() {
     '0'
   );
 
+  // `companies` has ZERO grants at all for `authenticated` (not just an
+  // RLS policy filtering rows to nothing) -- so this fails outright with
+  // Postgres error 42501 (permission denied) rather than returning 0 rows.
+  // Confirmed live on the first real CI run against scope-staging: the
+  // count(*)-based check pattern used for every other table doesn't apply
+  // here, the query never even executes. Uses expectDenied() (SAVEPOINT-
+  // wrapped) rather than a bare try/catch so the transaction can keep
+  // going afterward instead of aborting for every remaining statement.
   check(
-    'tenant_a_owner cannot see the companies table row for tenant B (or tenant A -- zero policies, deny-all by design)',
-    await scalar(`select count(*) from companies where id in ($1, $2)`, [IDS.companyA, IDS.companyB]),
-    '0'
+    'tenant_a_owner SELECT on companies is rejected outright (zero grants, deny-all by design)',
+    await expectDenied(`select count(*) from companies where id in ($1, $2)`, [IDS.companyA, IDS.companyB]),
+    true
   );
 
   await client.query(`update jobs set customer_name = 'HACKED-BY-CI-TEST' where id = $1`, [IDS.jobB1]);
@@ -281,13 +308,11 @@ async function main() {
     '0'
   );
 
-  let anonSelectOnEmployeesBlocked = false;
-  try {
-    await client.query('select * from employees limit 1;');
-  } catch (err) {
-    anonSelectOnEmployeesBlocked = true;
-  }
-  check('anon SELECT on employees is rejected outright (no grant at all)', anonSelectOnEmployeesBlocked, true);
+  check(
+    'anon SELECT on employees is rejected outright (no grant at all)',
+    await expectDenied('select * from employees limit 1;'),
+    true
+  );
 
   await asPostgres();
 
