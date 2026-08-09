@@ -161,7 +161,11 @@ jobs:
           grant select on public.session_policy to authenticated;
           grant select, insert on public.invite_codes to authenticated;
           grant select on public.ai_usage_log to authenticated;
+          grant select, insert on public.job_notes to authenticated;
           -- companies, billing_guardrails, login_attempts intentionally
           -- receive zero anon/authenticated grants -- see task #22.
+          -- job_notes added for task #24 (dispatcher dashboard) -- keep this
+          -- list in sync every time a new table gets grants; this is
+          -- exactly the step that was missing before task #23 found it.
           SQL
           echo "Grants reapplied to match production's minimal-privilege scheme."
