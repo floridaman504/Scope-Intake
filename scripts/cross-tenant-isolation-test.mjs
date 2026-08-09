@@ -236,14 +236,27 @@ async function main() {
     true
   );
 
+  // Verifying "did my blocked write actually do nothing" can't be done by
+  // re-querying as the SAME tenant that was just blocked -- tenant A can't
+  // SELECT tenant B's row in the first place (see the check above), so a
+  // self-check here would read as empty/absent regardless of whether the
+  // UPDATE/DELETE actually succeeded, silently making these checks
+  // meaningless. Confirmed this the hard way on the third CI run: both
+  // DELETE checks failed because the row genuinely was invisible to
+  // tenant A's own SELECT either way, and the UPDATE check "passed" for
+  // the same wrong reason. Fixed by verifying with the privileged
+  // `postgres` role (bypasses RLS) instead, then switching back.
   await client.query(`update jobs set customer_name = 'HACKED-BY-CI-TEST' where id = $1`, [IDS.jobB1]);
+  await asPostgres();
   check(
     'tenant_a_owner UPDATE against tenant B job has zero effect',
     await scalar(`select count(*) from jobs where id = $1 and customer_name = 'HACKED-BY-CI-TEST'`, [IDS.jobB1]),
     '0'
   );
+  await asRole('authenticated', IDS.ownerA);
 
   await client.query(`delete from jobs where id = $1`, [IDS.jobB1]);
+  await asPostgres();
   check(
     'tenant_a_owner DELETE against tenant B job has zero effect',
     await scalar(`select count(*) from jobs where id = $1`, [IDS.jobB1]),
@@ -283,6 +296,7 @@ async function main() {
   );
 
   await client.query(`delete from jobs where id = $1`, [IDS.jobA2]);
+  await asPostgres();
   check(
     "tenant_b_owner DELETE against tenant A's job has zero effect",
     await scalar(`select count(*) from jobs where id = $1`, [IDS.jobA2]),
