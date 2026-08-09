@@ -316,10 +316,14 @@ async function main() {
     '1'
   );
 
+  // Same category as the companies check above -- anon has ZERO SELECT
+  // grant on jobs at all (task #22 only granted it INSERT), so this is an
+  // outright permission-denied (42501), not an RLS-filtered empty result.
+  // Confirmed live on the fourth CI run.
   check(
     'anon cannot read back the job it just inserted (no SELECT grant)',
-    await scalar(`select count(*) from jobs where context = 'citest-anon'`),
-    '0'
+    await expectDenied(`select count(*) from jobs where context = 'citest-anon'`),
+    true
   );
 
   check(
