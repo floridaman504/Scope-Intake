@@ -27,7 +27,7 @@ export default function JobAssignment({ job, role, plumbers, employeesById, onCh
   const isAssigned = !!job.claimed_by;
   const assigneeName = isAssigned ? (employeesById[job.claimed_by]?.full_name || 'Unknown') : null;
 
-// Both owner and dispatcher can change who a job is assigned to, at
+  // Both owner and dispatcher can change who a job is assigned to, at
   // any time -- see the comment above the component for why.
   const canChangeAssignee = role === 'owner' || role === 'dispatcher';
 
@@ -56,7 +56,7 @@ export default function JobAssignment({ job, role, plumbers, employeesById, onCh
       .eq('id', job.id);
     setSaving(false);
     if (updateErr) {
-            // Surface the real server message here rather than fail silently, in
+      // Surface the real server message here rather than fail silently, in
       // case of an unexpected error. There's no assignment-lock trigger to
       // guard against anymore (see the comment above the component) -- both
       // owner and dispatcher can reassign at any time, so a failure here is
