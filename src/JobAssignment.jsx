@@ -102,7 +102,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
                 style={{ color: colors.muted }}
                 className="text-xs px-1"
               >
-                {busyId === e.id ? 'â¦' : 'â'}
+                {busyId === e.id ? '…' : '✕'}
               </button>
             </span>
           ))
@@ -117,7 +117,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
             style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
             className="text-base rounded-md px-3 py-2.5 min-w-[180px]"
           >
-            <option value="">Select a plumber or ownerâ¦</option>
+            <option value="">Select a plumber or owner…</option>
             {available.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.full_name || e.email}{e.role === 'owner' ? ' (owner)' : ''}
@@ -130,7 +130,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
             style={{ backgroundColor: colors.goldBright, color: colors.bg }}
             className="text-sm font-semibold px-4 py-2.5 rounded-md"
           >
-            {busyId === 'add' ? 'Addingâ¦' : 'Confirm'}
+            {busyId === 'add' ? 'Adding…' : 'Confirm'}
           </button>
           <button
             onClick={() => { setAdding(false); setSelectedId(''); setError(''); }}
@@ -147,7 +147,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
             style={{ backgroundColor: colors.goldBright, color: colors.bg }}
             className="text-sm font-semibold px-4 py-2.5 rounded-md self-start"
           >
-            {currentAssignees.length === 0 ? 'Assign to plumberâ¦' : '+ Add another'}
+            {currentAssignees.length === 0 ? 'Assign to plumber…' : '+ Add another'}
           </button>
         )
       )}
@@ -177,7 +177,7 @@ export function AssigneeBadge({ name }) {
       style={{ backgroundColor: colors.infoBg, color: colors.info, border: `1px solid ${colors.infoBorder}` }}
       className="text-xs font-semibold px-2.5 py-1 rounded-full"
     >
-      ð¤ {name}
+      👤 {name}
     </span>
   );
 }
