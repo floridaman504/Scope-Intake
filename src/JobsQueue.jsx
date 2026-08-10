@@ -370,6 +370,7 @@ export default function JobsQueue() {
                         </div>
                     )}
                   </div>
+                )}
 
                   {isManager && (
                     <button
