@@ -383,6 +383,7 @@ export default function JobsQueue() {
                   )}
                 </div>
               </div>
+              </div>
             );
           })}
         </div>
