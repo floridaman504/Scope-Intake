@@ -14,6 +14,19 @@
 // few minutes with a shared secret so randoms on the internet can't
 // trigger it.
 //
+// MULTI-ASSIGNEE NOTE (2026-08-10): assignment moved from a single
+// jobs.claimed_by column to a job_assignees junction table (a job can now
+// have multiple plumbers and/or the owner assigned -- "buddy work"). This
+// endpoint was deliberately left unchanged: a DB trigger
+// (sync_jobs_claimed_by_from_assignees, see
+// docs/migrations/2026-08-10-job-assignees-multi-assignee.sql) keeps
+// jobs.claimed_by/claimed_at mirroring the earliest-assigned row, so
+// claimed_by is still NULL if and only if job_assignees has zero rows for
+// the job -- the claimed_by=is.null filter below is exactly as correct
+// for "truly unassigned" under multi-assignee as it was under
+// single-assignee. If that trigger is ever removed, this query needs to
+// switch to checking job_assignees directly.
+//
 // Required env vars (set in Vercel project settings):
 //   VITE_SUPABASE_URL          (already set, reused here)
 //   SUPABASE_SERVICE_ROLE_KEY  (new -- Settings > API > service_role in Supabase)
@@ -113,8 +126,8 @@ export default async function handler(req, res) {
             subject: `Missed lead: ${job.ai_job_type || 'a job'} unclaimed for ${ageMinutes} min`,
             html: `
               <p><strong>A job has gone unclaimed for over an hour.</strong></p>
-              <p>${job.ai_job_type || 'Job'} — ${job.ai_urgency || 'Medium'} urgency</p>
-              <p>Customer: ${job.customer_name || 'Unknown'} ${job.customer_phone ? '· ' + job.customer_phone : ''} ${job.customer_email ? '· ' + job.customer_email : ''}</p>
+              <p>${job.ai_job_type || 'Job'} â ${job.ai_urgency || 'Medium'} urgency</p>
+              <p>Customer: ${job.customer_name || 'Unknown'} ${job.customer_phone ? 'Â· ' + job.customer_phone : ''} ${job.customer_email ? 'Â· ' + job.customer_email : ''}</p>
               <p>Submitted ${ageMinutes} minutes ago.</p>
               <p><a href="https://scope-intake.vercel.app/jobs">Open the jobs queue</a></p>
             `,
