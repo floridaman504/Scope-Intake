@@ -126,8 +126,8 @@ export default async function handler(req, res) {
             subject: `Missed lead: ${job.ai_job_type || 'a job'} unclaimed for ${ageMinutes} min`,
             html: `
               <p><strong>A job has gone unclaimed for over an hour.</strong></p>
-              <p>${job.ai_job_type || 'Job'} â ${job.ai_urgency || 'Medium'} urgency</p>
-              <p>Customer: ${job.customer_name || 'Unknown'} ${job.customer_phone ? 'Â· ' + job.customer_phone : ''} ${job.customer_email ? 'Â· ' + job.customer_email : ''}</p>
+              <p>${job.ai_job_type || 'Job'} — ${job.ai_urgency || 'Medium'} urgency</p>
+              <p>Customer: ${job.customer_name || 'Unknown'} ${job.customer_phone ? '· ' + job.customer_phone : ''} ${job.customer_email ? '· ' + job.customer_email : ''}</p>
               <p>Submitted ${ageMinutes} minutes ago.</p>
               <p><a href="https://scope-intake.vercel.app/jobs">Open the jobs queue</a></p>
             `,
