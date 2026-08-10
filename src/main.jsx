@@ -39,7 +39,12 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route
               path="/jobs"
               element={
-                <ProtectedRoute allowedRoles={['owner', 'dispatcher']}>
+                // task #41: plumbers now get their own read-only, scoped
+                // view of /jobs (JobsQueue.jsx itself decides what a
+                // plumber can see/do -- this route gate just needed to
+                // stop blocking them entirely). Owner/dispatcher still
+                // get the full assign/status/notes/search view.
+                <ProtectedRoute allowedRoles={['owner', 'dispatcher', 'plumber']}>
                   <JobsQueue />
                 </ProtectedRoute>
               }
