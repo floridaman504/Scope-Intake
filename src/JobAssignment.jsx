@@ -8,15 +8,15 @@ import { colors } from './theme.js';
 // owner/dispatcher), and dispatchers assign a job TO a specific plumber
 // rather than claiming it for themselves.
 //
-// Owner vs. dispatcher behavior once a job already has an assignee is
-// enforced server-side by the jobs_before_update_assignment_lock trigger
-// (2026-08-09-dispatcher-dashboard-pricing-estimator.sql): a dispatcher's
-// UPDATE fails if it changes claimed_by on a job that already has one.
-// This component mirrors that at the UI layer -- the "change assignee"
-// control only renders for role === 'owner' once a job is assigned, so a
-// dispatcher never sees a control that would just error out. If that
-// trigger's rule ever changes, this is the one place the UI needs to
-// follow it.
+// Both owner and dispatcher can freely (re)assign a job at any time --
+// there is no assignment lock. (An earlier version of this component and
+// a matching jobs_before_update_assignment_lock DB trigger restricted
+// reassignment to owner-only once a job had an assignee; that rule was
+// reversed per product decision on 2026-08-09 so dispatchers can
+// reassign jobs, e.g. when a plumber calls out. The trigger has been
+// dropped from the database to match -- only the RLS policy restricting
+// UPDATEs to owner/dispatcher still applies, which is what keeps
+// plumbers from touching this at all.)
 export default function JobAssignment({ job, role, plumbers, employeesById, onChanged }) {
   const [picking, setPicking] = useState(false);
   const [selectedId, setSelectedId] = useState('');
@@ -27,9 +27,9 @@ export default function JobAssignment({ job, role, plumbers, employeesById, onCh
   const isAssigned = !!job.claimed_by;
   const assigneeName = isAssigned ? (employeesById[job.claimed_by]?.full_name || 'Unknown') : null;
 
-  // Dispatchers can assign an unclaimed job, but once it's assigned only
-  // the owner can change WHO it's assigned to (see trigger note above).
-  const canChangeAssignee = role === 'owner' || (role === 'dispatcher' && !isAssigned);
+// Both owner and dispatcher can change who a job is assigned to, at
+  // any time -- see the comment above the component for why.
+  const canChangeAssignee = role === 'owner' || role === 'dispatcher';
 
   if (!canAssignAtAll) return null;
 
@@ -56,13 +56,12 @@ export default function JobAssignment({ job, role, plumbers, employeesById, onCh
       .eq('id', job.id);
     setSaving(false);
     if (updateErr) {
-      // Most likely cause of a failure here, if it ever happens: a
-      // dispatcher tried to reassign a job that already has an assignee
-      // and got blocked by jobs_before_update_assignment_lock -- the UI
-      // shouldn't normally let that happen (canChangeAssignee above), but
-      // surface the real server message rather than fail silently in
-      // case of a race (e.g. owner reassigns the same moment a dispatcher
-      // tries).
+            // Surface the real server message here rather than fail silently, in
+      // case of an unexpected error. There's no assignment-lock trigger to
+      // guard against anymore (see the comment above the component) -- both
+      // owner and dispatcher can reassign at any time, so a failure here is
+      // most likely a genuine RLS/company-scope issue or a transient
+      // network error.
       setError(updateErr.message);
       return;
     }
@@ -115,7 +114,7 @@ export default function JobAssignment({ job, role, plumbers, employeesById, onCh
               style={{ color: colors.gold }}
               className="text-sm underline underline-offset-2 py-1"
             >
-              {role === 'owner' ? 'Reassign' : 'Change'}
+              Reassign
             </button>
           )}
         </>
