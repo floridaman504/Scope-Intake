@@ -22,10 +22,10 @@ function minutesSince(dateStr) {
 //   - owner / dispatcher: full queue. Assign jobs to a specific plumber
 //     (never self-claim), change status, leave notes, search/filter
 //     across every job in the company. Owner can always reassign an
-//     already-assigned job; dispatcher cannot once it has an assignee
-//     (enforced server-side by jobs_before_update_assignment_lock, and
-//     mirrored in JobAssignment.jsx's canChangeAssignee check).
-//   - plumber: read-only, auto-scoped to just their own assigned jobs
+//     already-assigned job at any time -- the old owner-only-once-assigned
+// lock and its matching DB trigger were removed on 2026-08-09 (see
+// JobAssignment.jsx). Cancelling and reinstating a job (status dropdown)
+// are open to both too. Deleting a job outright is owner-only.
 //     (jobs_select_company's RLS doesn't itself restrict this -- any
 //     employee can SELECT any of their company's jobs -- so the
 //     "plumber only sees their own" scoping below is a deliberate
@@ -45,12 +45,14 @@ export default function JobsQueue() {
   const { employee } = useAuth();
   const role = employee?.role;
   const isManager = role === 'owner' || role === 'dispatcher';
+  const isOwner = role === 'owner';
 
   const [jobs, setJobs] = useState([]);
   const [employeesById, setEmployeesById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [search, setSearch] = useState('');
   const [statusFilters, setStatusFilters] = useState(
@@ -155,6 +157,32 @@ export default function JobsQueue() {
       setError('Could not update status: ' + updateErr.message);
       return;
     }
+    await load();
+  };
+
+  // Owner-only, irreversible. jobs_delete_owner_company RLS backs this up
+  // server-side (dispatcher/plumber DELETEs are rejected regardless of
+  // what the UI shows), but the button itself is also gated to isOwner so
+  // a dispatcher never sees a control that would just error out.
+  const handleDelete = async (job) => {
+    const label = job.customer_name || job.ai_job_type || 'this job';
+    const confirmed = window.confirm(
+      `Permanently delete ${label}? This can't be undone -- the job and its notes will be gone for good. If you just want it off the active list, use Cancel instead.`
+      );
+    if (!confirmed) return;
+
+    setError('');
+    setDeletingId(job.id);
+    const { error: deleteErr } = await supabase
+    .from('jobs')
+    .delete()
+    .eq('id', job.id);
+    setDeletingId(null);
+    if (deleteErr) {
+      setError('Could not delete job: ' + deleteErr.message);
+      return;
+    }
+    if (expandedId === job.id) setExpandedId(null);
     await load();
   };
 
@@ -328,7 +356,18 @@ export default function JobsQueue() {
                         </div>
 
                         <JobNotes jobId={j.id} employee={employee} employeesById={employeesById} />
-                      </div>
+
+                        {isOwner && (
+                        <div className="pt-1">
+                        <button
+                          onClick={() => handleDelete(j)}
+                          disabled={deletingId === j.id}
+                          style={{ color: colors.danger, border: `1px solid ${colors.dangerBorder}` }}
+                          className="text-sm font-semibold px-3 py-2 rounded-md"
+                          >
+                          {deletingId === j.id ? 'Deleting…' : 'Delete job'}
+                        </button>
+                        </div>
                     )}
                   </div>
 
