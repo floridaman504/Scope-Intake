@@ -184,7 +184,7 @@ export default function JobsQueue() {
   const toggleStatusFilter = (status) => {
     setStatusFilters((prev) => {
       const next = new Set(prev);
-      if (next.has(sstatus)) next.delete(status); else next.add(status);
+      if (next.has(status)) next.delete(status); else next.add(status);
       return next;
     });
   };
@@ -266,7 +266,7 @@ export default function JobsQueue() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by client, phone, email, job typeâ¦"
+          placeholder="Search by client, phone, email, job type…"
           style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
           className="w-full text-base rounded-md px-3 py-2.5"
         />
@@ -315,7 +315,7 @@ export default function JobsQueue() {
       {error && <p style={{ color: colors.danger }} className="text-sm mb-4">{error}</p>}
 
       {loading ? (
-        <p style={{ color: colors.muted }} className="text-sm">Loadingâ¦</p>
+        <p style={{ color: colors.muted }} className="text-sm">Loading…</p>
       ) : visibleJobs.length === 0 ? (
         <p style={{ color: colors.muted }} className="text-sm">No jobs match.</p>
       ) : (
@@ -359,13 +359,13 @@ export default function JobsQueue() {
                       )}
                     </div>
                     <p style={{ color: colors.faint }} className="text-xs mt-1">
-                      {new Date(j.created_at).toLocaleString()} Â· {Math.floor(age)} min ago
+                      {new Date(j.created_at).toLocaleString()} · {Math.floor(age)} min ago
                     </p>
                     {(j.customer_name || j.customer_phone || j.customer_email) && (
                       <p style={{ color: colors.muted }} className="text-xs mt-2">
                         {j.customer_name || 'Unknown name'}
-                        {j.customer_phone ? ` Â· ${j.customer_phone}` : ''}
-                        {j.customer_email ? ` Â· ${j.customer_email}` : ''}
+                        {j.customer_phone ? ` · ${j.customer_phone}` : ''}
+                        {j.customer_email ? ` · ${j.customer_email}` : ''}
                       </p>
                     )}
                     {j.ai_summary && (
@@ -417,7 +417,7 @@ export default function JobsQueue() {
                           style={{ color: colors.danger, border: `1px solid ${colors.dangerBorder}` }}
                           className="text-sm font-semibold px-3 py-2 rounded-md"
                           >
-                          {deletingId === j.id ? 'Deletingâ¦' : 'Delete job'}
+                          {deletingId === j.id ? 'Deleting…' : 'Delete job'}
                         </button>
                         </div>
                     )}
