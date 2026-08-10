@@ -35,7 +35,7 @@ const SESSION_ID_STORAGE_KEY = 'scope_session_id';
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
-  const [employee, setEmployee] = useState(null); // { id, user_id, role, full_name, email }
+  const [employee, setEmployee] = useState(null); // { id, user_id, company_id, role, full_name, email }
   const [loading, setLoading] = useState(true);
   const [sessionId, setSessionId] = useState(null);
   const [sessionWarning, setSessionWarning] = useState({ visible: false, secondsLeft: 0 });
@@ -59,7 +59,8 @@ export function AuthProvider({ children }) {
       setEmployee(null);
       return;
     }
-    // id and user_id are both included (not just role/full_name/email):
+    // id, user_id, and company_id are all included (not just
+    // role/full_name/email):
     // - id is the employees-table primary key, needed anywhere the app
     //   writes a foreign key back to employees (e.g. JobsQueue.jsx sets
     //   jobs.claimed_by = employee.id -- claimed_by references
@@ -69,9 +70,19 @@ export function AuthProvider({ children }) {
     //   one of MY OWN other devices" apart from "is this a different
     //   employee entirely" -- see the isSelf check there for why that
     //   distinction matters for the Sign Out Everywhere button.
+    // - company_id (added for task #41/#42, dispatcher dashboard +
+    //   pricing estimator): several new inserts need it supplied directly
+    //   from the client -- e.g. JobNotes.jsx's job_notes insert and the
+    //   upcoming job_estimates/job_estimate_line_items inserts -- because
+    //   those tables' company_id column has no default and isn't derived
+    //   server-side the way jobs.company_id is. RLS still independently
+    //   re-checks company_id = get_my_company_id() on every one of those
+    //   inserts, so a stale or tampered value here can't grant access to
+    //   another company's data -- this is just what the client sends,
+    //   not what the database trusts.
     const { data, error } = await supabase
       .from('employees')
-      .select('id, user_id, role, full_name, email')
+      .select('id, user_id, company_id, role, full_name, email')
       .eq('user_id', userId)
       .single();
     setEmployee(!error && data ? data : null);
