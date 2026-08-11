@@ -83,6 +83,19 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
       setError(deleteErr.message);
       return;
     }
+    // If that was the last assignee and the job was auto-advanced to
+    // "assigned" when it got its first one (see addAssignee above),
+    // revert status back to "new" so the dispatcher isn't left staring
+    // at a job that reads "Assigned" with nobody on it. Only touches
+    // jobs still sitting in that default "assigned" state -- a
+    // dispatcher who deliberately moved a job to in_progress/done/
+    // cancelled keeps that status even if everyone gets removed
+    // afterward, since that was an intentional status change, not a
+    // side effect of assignment.
+    const wasLastAssignee = currentAssigneeIds.length === 1 && currentAssigneeIds[0] === employeeId;
+    if (wasLastAssignee && job.status === 'assigned') {
+      await supabase.from('jobs').update({ status: 'new' }).eq('id', job.id);
+    }
     onChanged();
   };
 
