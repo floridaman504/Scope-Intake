@@ -34,13 +34,25 @@ function minutesSince(dateStr) {
 //     owner/dispatcher only -- see JobNotes.jsx), just their job list
 //     with search.
 //
+// task (2026-08-10, multi-assignee / "buddy work"): a job can now have
+// more than one assignee -- any mix of plumbers and/or the owner --
+// tracked in the job_assignees junction table instead of a single
+// jobs.claimed_by column. jobs.claimed_by/claimed_at are kept in sync by
+// a DB trigger as the "primary" (earliest-assigned) assignee, purely for
+// backward compatibility with the missed-lead cron. This component now
+// fetches job_assignees alongside jobs/employees and treats it as the
+// source of truth for "who's assigned," "is this job unassigned," and
+// plumbers' "is this my job" scoping -- claimed_by is no longer read
+// directly anywhere in this file.
+//
 // NOTE ON "search by address": jobs has no address/service-location
 // column at all today (checked the production schema -- intake collects
 // context/fixture/pipe/access/cutting/preference/leak_detection/pets, but
 // never a street address). Search below covers name/phone/email/job
-// type/summary -- everything that actually exists. Flagged for Dante
-// rather than silently dropped; adding a real address field is a small
-// follow-up (new column + one more intake-form step) if he wants it.
+// type/summary/assignee names -- everything that actually exists.
+// Flagged for Dante rather than silently dropped; adding a real address
+// field is a small follow-up (new column + one more intake-form step) if
+// he wants it.
 export default function JobsQueue() {
   const { employee } = useAuth();
   const role = employee?.role;
@@ -49,6 +61,7 @@ export default function JobsQueue() {
 
   const [jobs, setJobs] = useState([]);
   const [employeesById, setEmployeesById] = useState({});
+  const [assigneesByJob, setAssigneesByJob] = useState({}); // { [jobId]: [employeeId, ...] }, ordered by assigned_at
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState(null);
@@ -64,7 +77,7 @@ export default function JobsQueue() {
     setError('');
     const { data: jobRows, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status, claimed_by, claimed_at')
+      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status')
       .order('created_at', { ascending: false });
 
     if (jobErr) {
@@ -81,19 +94,43 @@ export default function JobsQueue() {
     (employeeRows || []).forEach((e) => { map[e.id] = e; });
     setEmployeesById(map);
 
+    // job_assignees RLS scopes this to the caller's own company already
+    // (via a join back to jobs.company_id), same as jobs itself -- no
+    // extra company filter needed here.
+    const { data: assigneeRows, error: assigneeErr } = await supabase
+      .from('job_assignees')
+      .select('job_id, employee_id, assigned_at')
+      .order('assigned_at', { ascending: true });
+    if (assigneeErr) {
+      setError('Could not load assignments: ' + assigneeErr.message);
+      setLoading(false);
+      return;
+    }
+    const byJob = {};
+    (assigneeRows || []).forEach((row) => {
+      if (!byJob[row.job_id]) byJob[row.job_id] = [];
+      byJob[row.job_id].push(row.employee_id);
+    });
+    setAssigneesByJob(byJob);
+
     setLoading(false);
   }, []);
 
   useEffect(() => {
     load();
 
-    // Live updates: new submissions, assignments, and status/note changes
-    // from other dispatchers show up without a manual refresh. Realtime
-    // respects the same RLS policies as normal queries, so this only ever
-    // delivers rows this employee's company can already see.
+    // Live updates: new submissions, assignment changes, and status/note
+    // changes from other dispatchers show up without a manual refresh.
+    // Assignment changes now land in job_assignees rather than jobs, so
+    // this subscribes to both tables. Realtime respects the same RLS
+    // policies as normal queries, so this only ever delivers rows this
+    // employee's company can already see.
     const channel = supabase
       .channel('jobs-queue')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => {
+        load();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_assignees' }, () => {
         load();
       })
       .subscribe();
@@ -101,24 +138,27 @@ export default function JobsQueue() {
     return () => { supabase.removeChannel(channel); };
   }, [load]);
 
-  const plumbers = useMemo(
-    () => Object.values(employeesById).filter((e) => e.role === 'plumber'),
+  // Assignable pool for the "add assignee" control: plumbers and/or the
+  // owner, per the buddy-work requirement -- dispatchers coordinate jobs
+  // but aren't themselves assigned to do the fieldwork.
+  const assignableEmployees = useMemo(
+    () => Object.values(employeesById).filter((e) => e.role === 'plumber' || e.role === 'owner'),
     [employeesById]
   );
 
   const visibleJobs = useMemo(() => {
     let list = jobs;
 
-    // Plumbers: hard-scoped to their own assigned jobs regardless of any
-    // filter UI -- this is the "not browsing everyone else's jobs" rule,
-    // not just a default.
+    // Plumbers: hard-scoped to jobs they're assigned to (as primary OR
+    // buddy) regardless of any filter UI -- this is the "not browsing
+    // everyone else's jobs" rule, not just a default.
     if (role === 'plumber') {
-      list = list.filter((j) => j.claimed_by === employee?.id);
+      list = list.filter((j) => (assigneesByJob[j.id] || []).includes(employee?.id));
     } else {
       if (assigneeFilter === 'unassigned') {
-        list = list.filter((j) => !j.claimed_by);
+        list = list.filter((j) => (assigneesByJob[j.id] || []).length === 0);
       } else if (assigneeFilter !== 'all') {
-        list = list.filter((j) => j.claimed_by === assigneeFilter);
+        list = list.filter((j) => (assigneesByJob[j.id] || []).includes(assigneeFilter));
       }
     }
 
@@ -127,17 +167,19 @@ export default function JobsQueue() {
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((j) => {
-        const assigneeName = j.claimed_by ? (employeesById[j.claimed_by]?.full_name || '') : '';
+        const assigneeNames = (assigneesByJob[j.id] || [])
+          .map((id) => employeesById[id]?.full_name || '')
+          .join(' ');
         const haystack = [
           j.customer_name, j.customer_phone, j.customer_email,
-          j.ai_job_type, j.ai_summary, assigneeName,
+          j.ai_job_type, j.ai_summary, assigneeNames,
         ].filter(Boolean).join(' ').toLowerCase();
         return haystack.includes(q);
       });
     }
 
     return list;
-  }, [jobs, role, employee, assigneeFilter, statusFilters, search, employeesById]);
+  }, [jobs, role, employee, assigneeFilter, statusFilters, search, employeesById, assigneesByJob]);
 
   const toggleStatusFilter = (status) => {
     setStatusFilters((prev) => {
@@ -163,7 +205,9 @@ export default function JobsQueue() {
   // Owner-only, irreversible. jobs_delete_owner_company RLS backs this up
   // server-side (dispatcher/plumber DELETEs are rejected regardless of
   // what the UI shows), but the button itself is also gated to isOwner so
-  // a dispatcher never sees a control that would just error out.
+  // a dispatcher never sees a control that would just error out. Deleting
+  // a job cascades to job_assignees (on delete cascade), so buddy
+  // assignments don't need separate cleanup here.
   const handleDelete = async (job) => {
     const label = job.customer_name || job.ai_job_type || 'this job';
     const confirmed = window.confirm(
@@ -186,7 +230,7 @@ export default function JobsQueue() {
     await load();
   };
 
-  const unclaimedCount = jobs.filter((j) => !j.claimed_by && j.status !== 'cancelled').length;
+  const unclaimedCount = jobs.filter((j) => (assigneesByJob[j.id] || []).length === 0 && j.status !== 'cancelled').length;
 
   return (
     <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
@@ -211,7 +255,7 @@ export default function JobsQueue() {
       </div>
       <p style={{ color: colors.muted }} className="text-sm mb-5">
         {isManager
-          ? 'Assign each job to a plumber to stop the missed-lead clock. Unassigned jobs past one hour are flagged and an alert email goes out.'
+          ? 'Assign each job to one or more plumbers to stop the missed-lead clock. Unassigned jobs past one hour are flagged and an alert email goes out.'
           : 'Jobs currently assigned to you.'}
       </p>
 
@@ -260,8 +304,8 @@ export default function JobsQueue() {
             >
               <option value="all">Everyone</option>
               <option value="unassigned">Unassigned</option>
-              {plumbers.map((p) => (
-                <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+              {assignableEmployees.map((e) => (
+                <option key={e.id} value={e.id}>{e.full_name || e.email}{e.role === 'owner' ? ' (owner)' : ''}</option>
               ))}
             </select>
           </div>
@@ -278,7 +322,8 @@ export default function JobsQueue() {
         <div className="space-y-3">
           {visibleJobs.map((j) => {
             const age = minutesSince(j.created_at);
-            const isUnclaimed = !j.claimed_by;
+            const assigneeIds = assigneesByJob[j.id] || [];
+            const isUnclaimed = assigneeIds.length === 0;
             const isOverdue = isManager && isUnclaimed && j.status !== 'cancelled' && age >= CLAIM_WINDOW_MINUTES;
             const isExpanded = expandedId === j.id;
 
@@ -299,7 +344,13 @@ export default function JobsQueue() {
                       </p>
                       <UrgencyBadge level={j.ai_urgency} />
                       <StatusBadge status={j.status} />
-                      <AssigneeBadge name={j.claimed_by ? (employeesById[j.claimed_by]?.full_name || 'Unknown') : null} />
+                      {assigneeIds.length === 0 ? (
+                        <AssigneeBadge name={null} />
+                      ) : (
+                        assigneeIds.map((id) => (
+                          <AssigneeBadge key={id} name={employeesById[id]?.full_name || 'Unknown'} />
+                        ))
+                      )}
                       {isOverdue && (
                         <span style={{ backgroundColor: colors.dangerBg, color: colors.danger, border: `1px solid ${colors.dangerBorder}` }}
                           className="text-[11px] font-semibold px-2 py-0.5 rounded-full">
@@ -349,7 +400,8 @@ export default function JobsQueue() {
                           <JobAssignment
                             job={j}
                             role={role}
-                            plumbers={plumbers}
+                            assignableEmployees={assignableEmployees}
+                            currentAssigneeIds={assigneeIds}
                             employeesById={employeesById}
                             onChanged={load}
                           />
