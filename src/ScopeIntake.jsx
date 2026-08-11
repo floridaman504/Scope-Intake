@@ -147,7 +147,7 @@ let brief;
 try {
 const summary = STEPS.map((s) => {
 if (s.id === 'contact') return null; // contact info isn't part of the job-type summary
-return \`\${s.title}: \${answers[s.id] || 'Not provided'}\`;
+return `${s.title}: ${answers[s.id] || 'Not provided'}`;
 }).filter(Boolean).join('\n');
 
 const response = await fetch('/api/review-job', {
@@ -240,7 +240,7 @@ return (
 <div
 style={{
 height: 2,
-width: \`\${progress}%\`,
+width: `${progress}%`,
 background: 'linear-gradient(to right, #8A6D1A, #C9A227)',
 transition: 'width 0.5s ease-out',
 }}
@@ -335,7 +335,7 @@ key={opt}
 onClick={() => setAnswer(opt)}
 style={{
 backgroundColor: isSelected ? '#26200A' : '#1C1C1C',
-border: \`2px solid \${isSelected ? '#E8BD3A' : '#454545'}\`,
+border: `2px solid ${isSelected ? '#E8BD3A' : '#454545'}`,
 color: isSelected ? '#FFFFFF' : '#E0E0E0',
 }}
 className="text-left px-4 py-3.5 rounded-lg transition-all text-base"
@@ -380,7 +380,7 @@ Tap to add photos or video
 {media.map((m, i) => (
 <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E', position: 'relative' }} className="aspect-square rounded-md overflow-hidden">
 {m.type === 'image' ? (
-<img src={m.url} alt={\`Uploaded photo \${i + 1} of the issue\`} className="w-full h-full object-cover" />
+<img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
 ) : (
 <div className="w-full h-full flex items-center justify-center">
 <Video size={20} style={{ color: '#C9A227' }} />
@@ -388,7 +388,7 @@ Tap to add photos or video
 )}
 <button
 onClick={() => removeMedia(i)}
-aria-label={\`Remove \${m.type === 'video' ? 'video' : 'photo'} \${i + 1}\`}
+aria-label={`Remove ${m.type === 'video' ? 'video' : 'photo'} ${i + 1}`}
 style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.7)' }}
 className="rounded-full p-1"
 >
@@ -431,7 +431,7 @@ className="flex items-center gap-1.5 text-[15px] font-semibold px-5 py-3 rounded
 </button>
 </footer>
 
-<style>{\`
+<style>{`
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
 .font-sans { font-family: 'Inter', sans-serif; }
 .animate-fadein { animation: fadein 0.35s ease-out; }
@@ -439,7 +439,7 @@ className="flex items-center gap-1.5 text-[15px] font-semibold px-5 py-3 rounded
 from { opacity: 0; transform: translateY(6px); }
 to { opacity: 1; transform: translateY(0); }
 }
-\`}</style>
+`}</style>
 </div>
 );
 }
@@ -496,7 +496,7 @@ return (
 {media.map((m, i) => (
 <div key={i} style={{ backgroundColor: '#1A1A1A', border: '1px solid #2E2E2E' }} className="aspect-square rounded-md overflow-hidden">
 {m.type === 'image' ? (
-<img src={m.url} alt={\`Uploaded photo \${i + 1} of the issue\`} className="w-full h-full object-cover" />
+<img src={m.url} alt={`Uploaded photo ${i + 1} of the issue`} className="w-full h-full object-cover" />
 ) : (
 <div className="w-full h-full flex items-center justify-center">
 <Video size={20} style={{ color: '#C9A227' }} />
@@ -533,10 +533,10 @@ Submit another job request
 )}
 </main>
 
-<style>{\`
+<style>{`
 @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
 .font-sans { font-family: 'Inter', sans-serif; }
-\`}</style>
+`}</style>
 </div>
 );
 }
