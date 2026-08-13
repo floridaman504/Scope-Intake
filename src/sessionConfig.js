@@ -8,7 +8,6 @@ export const FALLBACK_ROLE_LIFETIME_MINUTES = {
   dispatcher: 1440,
   plumber: 1440,
 };
-export const FALLBACK_CONCURRENT_SESSION_LIMIT = 3;
 
 // How long before expiry to show the "still there?" warning modal.
 export const WARNING_LEAD_SECONDS = 60;
@@ -25,8 +24,8 @@ export const BACKSTOP_POLL_INTERVAL_MS = 30_000;
 // Local countdown tick while the warning modal is showing.
 export const WARNING_TICK_MS = 1_000;
 
-// sessionStorage key for the pre-expiry snapshot (path + optional form
-// data) that Login.jsx reads after re-auth to restore where the user was.
+// sessionStorage key for the pre-expiry snapshot (the path to return to)
+// that Login.jsx reads after re-auth to restore where the user was.
 export const RESTORE_SNAPSHOT_KEY = 'scope_session_restore_snapshot';
 
 // How old a snapshot can be before we stop trying to restore to it (avoids
