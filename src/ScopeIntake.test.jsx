@@ -143,3 +143,62 @@ describe('ScopeIntake media upload', () => {
     expect(screen.queryByText(/didn't upload/i)).not.toBeInTheDocument();
   });
 });
+
+// Covers the fix for a real gap: submit_public_job() rejecting used to be
+// swallowed by a bare console.error, leaving the customer looking at the
+// full "job brief -- ready for dispatch" screen for a job that was never
+// actually saved (see docs/audits/2026-08-08-migration-safety-playbook.md's
+// complexity-debt audit, tech-debt finding 3.1). These tests exist to catch
+// a regression back to that silent-failure state.
+describe('ScopeIntake submission failure + retry', () => {
+  it('does not show the job brief when submit_public_job fails, and tells the customer instead', async () => {
+    mockSupabase.rpc.mockImplementationOnce(() =>
+      Promise.resolve({ data: null, error: { message: 'network error' } })
+    );
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+
+    await fillAndSubmit(user, {});
+
+    expect(await screen.findByText(/couldn't save your request/i)).toBeInTheDocument();
+    expect(screen.queryByText(/job brief/i)).not.toBeInTheDocument();
+  });
+
+  it('retries the save using the already-computed brief, without calling /api/review-job again', async () => {
+    mockSupabase.rpc.mockImplementationOnce(() =>
+      Promise.resolve({ data: null, error: { message: 'network error' } })
+    );
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+
+    await fillAndSubmit(user, {});
+    expect(await screen.findByText(/couldn't save your request/i)).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    // beforeEach's default RPC config (success) is back in effect now that
+    // the one-time failure override above has been consumed.
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+
+    await waitFor(() => expect(screen.getByText(/job brief/i)).toBeInTheDocument());
+    expect(global.fetch).toHaveBeenCalledTimes(1); // still 1 -- no second AI call
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('submit_public_job', expect.objectContaining({
+      p_ai_job_type: 'Leaking pipe', // the brief from the original (only) fetch call
+    }));
+  });
+
+  it('"Start over instead" resets back to the first step', async () => {
+    mockSupabase.rpc.mockImplementationOnce(() =>
+      Promise.resolve({ data: null, error: { message: 'network error' } })
+    );
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+
+    await fillAndSubmit(user, {});
+    expect(await screen.findByText(/couldn't save your request/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /start over instead/i }));
+
+    expect(screen.getByText(/step 1 of/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't save your request/i)).not.toBeInTheDocument();
+  });
+});
