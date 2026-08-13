@@ -1,9 +1,16 @@
 -- Tier 1.3: session/auth hardening
 --
--- NOT YET APPLIED TO PRODUCTION. This file is checked into source control
--- for review. Run it by hand in the Supabase SQL editor against project
--- etpzprrroxjjroisboui only after Dante has read
--- docs/audits/2026-08-06-session-auth-hardening.md and says go.
+-- APPLIED TO PRODUCTION (etpzprrroxjjroisboui). Confirmed live and verified
+-- 2026-08-13: session_policy and user_sessions tables exist, RLS enabled on
+-- both, all four functions (register_session, touch_session, revoke_session,
+-- sign_out_everywhere) present, user_sessions is in the supabase_realtime
+-- publication. At verification time user_sessions already held 25 real rows
+-- across 4 distinct users with the earliest dated 2026-08-09 -- meaning this
+-- was actually applied and collecting real session data days before this
+-- comment was corrected; the "NOT YET APPLIED" language below was stale.
+-- Re-running this file is safe (every statement is idempotent -- create
+-- table/policy/function if-not-exists or drop-then-create), so it can still
+-- be used to reconcile a fresh environment or confirm state on production.
 --
 -- Context: Supabase Auth's native per-role session TTL / concurrent-session
 -- cap / inactivity timeout ("User Sessions" panel in Auth > Sessions) is
@@ -25,10 +32,10 @@
 -- ============================================================================
 
 create table if not exists session_policy (
-  role text primary key,
-  max_lifetime_minutes int not null,
-  concurrent_session_limit int not null default 3
-);
+    role text primary key,
+    max_lifetime_minutes int not null,
+    concurrent_session_limit int not null default 3
+  );
 
 insert into session_policy (role, max_lifetime_minutes, concurrent_session_limit) values
   ('owner', 120, 3),
@@ -59,18 +66,18 @@ using (true);
 -- ============================================================================
 
 create table if not exists user_sessions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references auth.users(id) on delete cascade,
-  company_id uuid not null,
-  role_at_login text not null,
-  device_label text,
-  user_agent text,
-  ip_address text,
-  created_at timestamptz not null default now(),
-  last_activity_at timestamptz not null default now(),
-  revoked_at timestamptz,
-  revoked_reason text
-);
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users(id) on delete cascade,
+    company_id uuid not null,
+    role_at_login text not null,
+    device_label text,
+    user_agent text,
+    ip_address text,
+    created_at timestamptz not null default now(),
+    last_activity_at timestamptz not null default now(),
+    revoked_at timestamptz,
+    revoked_reason text
+  );
 
 create index if not exists user_sessions_user_id_idx on user_sessions(user_id);
 create index if not exists user_sessions_company_id_idx on user_sessions(company_id);
@@ -150,11 +157,11 @@ begin
   update user_sessions
   set revoked_at = now(), revoked_reason = 'concurrent_session_limit_exceeded'
   where id in (
-    select id from user_sessions
-    where user_id = auth.uid() and revoked_at is null
-    order by last_activity_at desc
-    offset v_limit
-  );
+        select id from user_sessions
+        where user_id = auth.uid() and revoked_at is null
+        order by last_activity_at desc
+        offset v_limit
+      );
 
   return v_session_id;
 end;
@@ -313,9 +320,9 @@ grant execute on function sign_out_everywhere(uuid) to authenticated;
 do $$
 begin
   if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_sessions'
-  ) then
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'user_sessions'
+    ) then
     alter publication supabase_realtime add table user_sessions;
   end if;
 end $$;
