@@ -137,6 +137,29 @@ async function main() {
     [IDS.owner, IDS.dispatcher, IDS.company]
   );
 
+  // session_policy is a global (not company-scoped) table, and its seed
+  // values are meant to be editable by Dante directly in the SQL editor
+  // (see supabase_session_hardening.sql's own header) rather than owned by
+  // this test's fixtures -- so scope-staging isn't guaranteed to carry the
+  // same rows production does. Upsert the canonical values here (as
+  // postgres, inside this rolled-back transaction) so the test is
+  // self-contained and doesn't silently fall back to register_session()/
+  // touch_session()'s built-in defaults (limit=3, 1440min) if a role row
+  // happens to be missing on staging -- that fallback exists for
+  // forward-compat with a future role, not as a substitute for real seed
+  // data, and if it silently kicked in here the concurrent-cap and
+  // inactivity-timeout assertions below would pass or fail for the wrong
+  // reason.
+  await client.query(
+    `insert into session_policy (role, max_lifetime_minutes, concurrent_session_limit) values
+       ('owner', 120, 3),
+       ('dispatcher', 1440, 3),
+       ('plumber', 1440, 3)
+     on conflict (role) do update
+       set max_lifetime_minutes = excluded.max_lifetime_minutes,
+           concurrent_session_limit = excluded.concurrent_session_limit`
+  );
+
   // ---- session_policy: readable, matches the seeded roles ----
   await asRole('authenticated', IDS.owner);
   check(
@@ -313,15 +336,25 @@ async function main() {
   );
   check('the fresh dispatcher session exists and is unrevoked before the raw-write attempt', beforeRawUpdate, null);
 
-  // Attempt a raw revoke via direct UPDATE instead of revoke_session() --
-  // should affect 0 rows (no UPDATE policy grants this to authenticated).
-  await client.query(`update user_sessions set revoked_at = now() where id = $1`, [dispatcherFreshSessionId]);
+  // Attempt a raw revoke via direct UPDATE instead of revoke_session().
+  // Confirmed against real staging: there's no UPDATE grant to
+  // `authenticated` on user_sessions at all, so this throws "permission
+  // denied for table user_sessions" -- a hard privilege error, not an RLS
+  // filter that would just affect 0 rows. expectRejected's SAVEPOINT
+  // wrapper treats either outcome as a pass (both mean the write didn't
+  // happen), so this stays correct even if the enforcement mechanism
+  // changes from a privilege denial to an RLS-only one later.
+  const rawUpdateBlocked = await expectRejected(() =>
+    client.query(`update user_sessions set revoked_at = now() where id = $1`, [dispatcherFreshSessionId])
+  );
+  check('a raw UPDATE against user_sessions (bypassing revoke_session) is rejected', rawUpdateBlocked, true);
+
   const afterRawUpdate = await scalar(
     `select revoked_at from user_sessions where id = $1`,
     [dispatcherFreshSessionId]
   );
   check(
-    'a raw UPDATE against user_sessions (bypassing revoke_session) has zero effect',
+    'the fresh dispatcher session is still unrevoked after the blocked raw UPDATE',
     afterRawUpdate,
     null
   );
