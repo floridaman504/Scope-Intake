@@ -1,0 +1,197 @@
+name: Apply migration to production
+
+# Migration pipeline, step 3 of 3 (see docs/audits/2026-08-08-migration-safety-playbook.md
+# and docs/migrations/2026-08-13-schema-migrations-tracking-table.sql for the
+# other two pieces).
+#
+# Replaces "paste the forward SQL into the Supabase SQL editor by hand" with
+# a manual-but-logged Action run. Two things that manual step never had:
+#   1. An idempotency guard -- schema_migrations records every file this
+#      workflow applies, so running the same file twice fails loudly
+#      instead of silently re-running DDL that already ran.
+#   2. A permanent, attributable record of who ran what and when -- this
+#      run's own log (which GitHub Actions keeps regardless of Supabase's
+#      plan tier) is the audit trail Supabase's Free/Pro plan doesn't
+#      provide (confirmed 2026-08-13: org-level audit logs need Team or
+#      above).
+#
+# This does NOT replace the playbook's earlier steps -- test on staging
+# first (test-migration-on-staging.yml), and only run this once that's come
+# back clean. Manual trigger only; workflow_dispatch is already restricted
+# to repo collaborators with write access, and the confirm_apply input below
+# is one more deliberate step against a fat-fingered run.
+#
+# record_only exists for exactly one situation: backfilling
+# schema_migrations for a file that was already applied by hand before this
+# workflow existed. It never runs the file's SQL -- it only inserts a
+# tracking row -- and requires verified_how so that backfill can't happen
+# without saying, in the run's own log, how "already applied" was actually
+# confirmed (not just asserted).
+#
+# Security note: every ${{ inputs.* }} / ${{ github.* }} value is passed
+# into steps via `env:` and referenced as a shell variable ("$VAR"), never
+# interpolated directly into a run: script body -- free-text workflow
+# inputs interpolated straight into a script is a known injection pattern,
+# and this workflow runs DDL against production with real DB credentials.
+# Where a value is embedded in SQL text, it goes through psql's -v/:'var'
+# quoting or an explicit shell-level quote-escape helper, never raw string
+# concatenation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_file:
+        description: 'Filename in docs/migrations/ to apply (e.g. 2026-08-13-schema-migrations-tracking-table.sql)'
+        required: true
+        type: string
+      confirm_apply:
+        description: 'Type APPLY-TO-PRODUCTION to confirm -- this runs DDL against the live database'
+        required: true
+        type: string
+      record_only:
+        description: 'Backfill only: record this file as already applied WITHOUT running its SQL'
+        required: false
+        type: boolean
+        default: false
+      verified_how:
+        description: 'Required if record_only: how you confirmed this migration is already live (specific query/result, not "probably")'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    env:
+      MIGRATION_FILE: ${{ inputs.migration_file }}
+      CONFIRM_APPLY: ${{ inputs.confirm_apply }}
+      RECORD_ONLY: ${{ inputs.record_only }}
+      VERIFIED_HOW: ${{ inputs.verified_how }}
+      RUN_ID: ${{ github.run_id }}
+      ACTOR: ${{ github.actor }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify inputs
+        run: |
+          set -euo pipefail
+          if [ "$CONFIRM_APPLY" != "APPLY-TO-PRODUCTION" ]; then
+            echo "::error::confirm_apply must be exactly 'APPLY-TO-PRODUCTION'. Refusing to run."
+            exit 1
+          fi
+          if [ "$RECORD_ONLY" = "true" ] && [ -z "$VERIFIED_HOW" ]; then
+            echo "::error::record_only requires verified_how -- state how you confirmed this is already live."
+            exit 1
+          fi
+
+      - name: Verify SUPABASE_DB_URL is configured
+        run: |
+          if [ -z "${SUPABASE_DB_URL}" ]; then
+            echo "::error::Missing SUPABASE_DB_URL secret."
+            exit 1
+          fi
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+
+      - name: Locate migration file
+        run: |
+          set -euo pipefail
+          FWD="docs/migrations/$MIGRATION_FILE"
+          if [ ! -f "$FWD" ]; then
+            echo "::error::$FWD does not exist."
+            exit 1
+          fi
+
+      - name: Install postgresql-client (v17, to match Supabase's Postgres server)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+
+      - name: Bootstrap schema_migrations (idempotent guard, matches 2026-08-13-schema-migrations-tracking-table.sql)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          /usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          create table if not exists schema_migrations (
+              filename text primary key,
+              applied_at timestamptz not null default now(),
+              applied_via text not null default 'manual',
+              notes text
+            );
+          SQL
+
+      - name: Refuse if already applied
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          # -v mf=... + :'mf' is psql's own quoted-literal substitution --
+          # safe against both shell and SQL injection, no manual escaping.
+          EXISTING=$(/usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -v mf="$MIGRATION_FILE" -tAc \
+            "select applied_at || ' via ' || applied_via from schema_migrations where filename = :'mf'")
+          if [ -n "$EXISTING" ]; then
+            echo "::error::$MIGRATION_FILE is already recorded as applied ($EXISTING). Refusing to re-run."
+            exit 1
+          fi
+
+      - name: Apply forward migration to production
+        if: ${{ inputs.record_only != true }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          FWD="docs/migrations/$MIGRATION_FILE"
+          APPLIED_VIA="github-actions:${RUN_ID} (triggered by ${ACTOR})"
+
+          # Deliberately NOT using psql -v/:'var' substitution for this
+          # step: it would apply across the WHOLE concatenated script,
+          # including the migration file's own arbitrary SQL content, which
+          # risks colliding with a literal ":" the migration text wasn't
+          # expecting to be treated as a variable reference. Instead,
+          # hand-escape the two dynamic values (double embedded single
+          # quotes, the standard SQL string-literal escape) and inline only
+          # those into a plain SQL literal.
+          sql_escape() { printf '%s' "$1" | sed "s/'/''/g"; }
+          MF_ESC=$(sql_escape "$MIGRATION_FILE")
+          AV_ESC=$(sql_escape "$APPLIED_VIA")
+
+          # Concatenate the migration's own SQL with the tracking INSERT and
+          # run both as ONE script under -1 (single transaction), so the
+          # migration and its own tracking record either both land or
+          # neither does -- no window where the DDL succeeded but nothing
+          # recorded it.
+          {
+            cat "$FWD"
+            echo ""
+            echo ""
+            printf "insert into schema_migrations (filename, applied_via, notes) values ('%s', '%s', null);\n" "$MF_ESC" "$AV_ESC"
+          } > /tmp/apply.sql
+
+          echo "--- Combined script (migration + tracking insert) ---"
+          cat /tmp/apply.sql
+          echo "--- Applying to production ---"
+          /usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -1 -f /tmp/apply.sql
+          rm -f /tmp/apply.sql
+          echo "Applied and recorded: $MIGRATION_FILE"
+
+      - name: Record backfill (record_only, SQL not executed)
+        if: ${{ inputs.record_only == true }}
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          APPLIED_VIA="backfill:github-actions:${RUN_ID} (recorded by ${ACTOR})"
+          /usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+            -v mf="$MIGRATION_FILE" -v av="$APPLIED_VIA" -v vh="$VERIFIED_HOW" \
+            -c "insert into schema_migrations (filename, applied_via, notes) values (:'mf', :'av', :'vh');"
+          echo "Recorded $MIGRATION_FILE as already-applied (SQL was NOT executed)."

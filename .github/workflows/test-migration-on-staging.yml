@@ -1,0 +1,112 @@
+name: Test migration on staging
+
+# Migration pipeline, step 2 of 3 (see docs/audits/2026-08-08-migration-safety-playbook.md
+# and docs/migrations/2026-08-13-schema-migrations-tracking-table.sql for the
+# other two pieces).
+#
+# Automates playbook steps 2-4: run the forward SQL from a docs/migrations/
+# file against scope-staging, then (by default) its rollback, so both are
+# proven safe before either ever touches production. Run sync-staging.yml
+# first if staging hasn't been refreshed against production's current shape
+# recently.
+#
+# Manual only, like sync-staging.yml -- testing a specific migration is a
+# deliberate step you take, not something that should run on every push.
+#
+# Security note: workflow inputs are passed via `env:` and referenced as
+# shell variables, never interpolated directly into a run: script body --
+# see the equivalent note in apply-migration.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_file:
+        description: 'Filename in docs/migrations/ to test (e.g. 2026-08-13-schema-migrations-tracking-table.sql)'
+        required: true
+        type: string
+      test_rollback:
+        description: 'Also run the matching -rollback.sql file after the forward migration succeeds'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-on-staging:
+    runs-on: ubuntu-latest
+    env:
+      MIGRATION_FILE: ${{ inputs.migration_file }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify STAGING_DB_URL is configured
+        run: |
+          if [ -z "${STAGING_DB_URL}" ]; then
+            echo "::error::Missing STAGING_DB_URL secret."
+            exit 1
+          fi
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+
+      - name: Locate migration file
+        id: files
+        run: |
+          set -euo pipefail
+          FWD="docs/migrations/$MIGRATION_FILE"
+          if [ ! -f "$FWD" ]; then
+            echo "::error::$FWD does not exist."
+            exit 1
+          fi
+          echo "forward=$FWD" >> "$GITHUB_OUTPUT"
+
+          ROLLBACK="docs/migrations/$(basename "$MIGRATION_FILE" .sql)-rollback.sql"
+          echo "rollback=$ROLLBACK" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.test_rollback }}" = "true" ] && [ ! -f "$ROLLBACK" ]; then
+            echo "::error::test_rollback was requested but $ROLLBACK does not exist."
+            exit 1
+          fi
+
+      - name: Install postgresql-client (v17, to match Supabase's Postgres server)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+
+      - name: Apply forward migration to staging
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "Applying ${{ steps.files.outputs.forward }} to scope-staging..."
+          # -1 wraps the whole file in a single transaction -- a failure
+          # partway through rolls back cleanly instead of leaving staging
+          # half-migrated.
+          /usr/lib/postgresql/17/bin/psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -1 \
+            -f "${{ steps.files.outputs.forward }}"
+          echo "Forward migration applied successfully."
+
+      - name: Apply rollback to staging
+        if: ${{ inputs.test_rollback }}
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          set -euo pipefail
+          echo "Applying ${{ steps.files.outputs.rollback }} to scope-staging..."
+          /usr/lib/postgresql/17/bin/psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -1 \
+            -f "${{ steps.files.outputs.rollback }}"
+          echo "Rollback applied successfully. Staging should be back to its pre-migration shape."
+
+      - name: Reminder
+        run: |
+          echo "This confirms the SQL runs cleanly both directions -- it does NOT replace"
+          echo "eyeballing this file's own 'Verification queries' comment against staging,"
+          echo "or clicking through any app screens the change affects. Do that manually"
+          echo "before considering this migration ready for production."
