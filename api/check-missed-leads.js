@@ -145,7 +145,7 @@ export default async function handler(req, res) {
       // retried forever on every cron run) or when the send succeeded.
       // A failed send with recipients present is left unmarked for retry.
       if (sendOk) {
-        await fetch(`${supabaseUrl}/rest/v1/jobs?id=eq.${job.id}`, {
+        const markRes = await fetch(`${supabaseUrl}/rest/v1/jobs?id=eq.${job.id}`, {
           method: 'PATCH',
           headers: {
             apikey: serviceKey,
@@ -155,7 +155,20 @@ export default async function handler(req, res) {
           },
           body: JSON.stringify({ missed_lead_alert_sent_at: new Date().toISOString() }),
         });
-        alerted += 1;
+        // If this PATCH itself fails, the row is still unmarked -- the
+        // next cron run will see it as overdue again and (if there were
+        // recipients) send a second email. That's the same "occasionally
+        // double-alert rather than silently never-alert" tradeoff the
+        // BUGFIX above already accepts for send failures; this just makes
+        // sure a failed mark-as-sent is counted and visible the same way
+        // a failed send already is, instead of silently reporting success
+        // for a write that didn't happen.
+        if (markRes.ok) {
+          alerted += 1;
+        } else {
+          failed += 1;
+          failures.push({ jobId: job.id, status: markRes.status, stage: 'mark_alerted' });
+        }
       }
     }
 
