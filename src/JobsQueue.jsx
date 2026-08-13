@@ -77,7 +77,7 @@ export default function JobsQueue() {
     setError('');
     const { data: jobRows, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status')
+      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status, media')
       .order('created_at', { ascending: false });
 
     if (jobErr) {
@@ -407,6 +407,8 @@ export default function JobsQueue() {
                           />
                         </div>
 
+                        {j.media?.length > 0 && <JobMedia media={j.media} />}
+
                         <JobNotes jobId={j.id} employee={employee} employeesById={employeesById} />
 
                         {isOwner && (
@@ -445,6 +447,67 @@ export default function JobsQueue() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
+    </div>
+  );
+}
+
+// Renders a job's attached photos/videos. The `job-media` bucket is
+// private (see docs/migrations/2026-08-12-job-media-storage-bucket.sql) --
+// its SELECT policy only allows a signed URL to be minted for an
+// employee whose own company_id matches the object's path, mirroring
+// jobs_select_company. Signed URLs are fetched lazily here (only once a
+// job is expanded), not for every row in the list, and are short-lived
+// (1 hour) rather than cached indefinitely.
+function JobMedia({ media }) {
+  const [signedUrls, setSignedUrls] = useState({}); // { [path]: url | 'error' }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        media.map(async (m) => {
+          if (!m.path) return [m.path, 'error'];
+          const { data, error } = await supabase.storage
+            .from('job-media')
+            .createSignedUrl(m.path, 3600);
+          return [m.path, error ? 'error' : data.signedUrl];
+        })
+      );
+      if (!cancelled) setSignedUrls(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [media]);
+
+  return (
+    <div>
+      <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
+        Attachments
+      </label>
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+        {media.map((m, i) => {
+          const url = m.path ? signedUrls[m.path] : undefined;
+          return (
+            <div key={i} style={{ backgroundColor: colors.panelAlt, border: `1px solid ${colors.borderLight}` }}
+              className="aspect-square rounded-md overflow-hidden flex items-center justify-center">
+              {!m.path || url === 'error' ? (
+                <span style={{ color: colors.faint }} className="text-[10px] text-center px-1">
+                  {!m.path ? 'Not uploaded' : 'Unavailable'}
+                </span>
+              ) : !url ? (
+                <span style={{ color: colors.faint }} className="text-[10px]">Loading…</span>
+              ) : m.type === 'image' ? (
+                <a href={url} target="_blank" rel="noreferrer" className="w-full h-full">
+                  <img src={url} alt={m.name || `Attachment ${i + 1}`} className="w-full h-full object-cover" />
+                </a>
+              ) : (
+                <a href={url} target="_blank" rel="noreferrer" style={{ color: colors.gold }} className="text-[11px] text-center px-1 underline">
+                  View video
+                </a>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

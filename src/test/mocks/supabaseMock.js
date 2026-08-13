@@ -28,6 +28,16 @@ function createChainable(getResponse) {
   return chain;
 }
 
+// One shared stand-in for whatever bucket .storage.from(...) is called
+// with -- this app only ever touches one bucket ('job-media') at a time,
+// so a single reusable object (rather than a fresh one per call) lets
+// tests configure upload/createSignedUrl with mockResolvedValueOnce for
+// per-file sequencing and still assert on .mock.calls afterward.
+export const storageBucketMock = {
+  upload: vi.fn(),
+  createSignedUrl: vi.fn(),
+};
+
 export const mockSupabase = {
   auth: {
     getSession: vi.fn(),
@@ -42,6 +52,9 @@ export const mockSupabase = {
   rpc: vi.fn(),
   channel: vi.fn(),
   removeChannel: vi.fn(),
+  storage: {
+    from: vi.fn(() => storageBucketMock),
+  },
 };
 
 let tableResponses = {};
@@ -99,4 +112,8 @@ export function resetSupabaseMock() {
   });
 
   mockSupabase.removeChannel.mockReset();
+
+  storageBucketMock.upload.mockReset().mockResolvedValue({ data: { path: 'mock-path' }, error: null });
+  storageBucketMock.createSignedUrl.mockReset().mockResolvedValue({ data: { signedUrl: 'https://example.test/signed' }, error: null });
+  mockSupabase.storage.from.mockReset().mockImplementation(() => storageBucketMock);
 }

@@ -92,6 +92,11 @@ const [media, setMedia] = useState([]);
 const [submitted, setSubmitted] = useState(false);
 const [aiBrief, setAiBrief] = useState(null);
 const [loading, setLoading] = useState(false);
+// Count of attached files that didn't make it to storage (or didn't get
+// linked to the job afterward) -- surfaced on ResultScreen so a customer
+// is never told every attachment made it through when one silently didn't.
+// The job save itself is never blocked by a media failure.
+const [mediaUploadFailures, setMediaUploadFailures] = useState(0);
 const fileInputRef = useRef(null);
 
 const current = STEPS[step];
@@ -121,10 +126,17 @@ const back = () => { if (step > 0) setStep(step - 1); };
 
 const handleFile = (e) => {
 const files = Array.from(e.target.files || []);
+// `url` is a browser-local blob URL, used only for the in-form preview
+// below and on the immediate post-submit ResultScreen (it stays valid for
+// the rest of this tab's life). `file` is the actual File object -- that's
+// what gets uploaded to Supabase Storage in handleSubmit, once a job id
+// exists to scope the storage path to. See
+// docs/migrations/2026-08-12-job-media-storage-bucket.sql.
 const mapped = files.map((f) => ({
 name: f.name,
 type: f.type.startsWith('video') ? 'video' : 'image',
 url: URL.createObjectURL(f),
+file: f,
 }));
 setMedia((m) => [...m, ...mapped]);
 };
@@ -189,8 +201,19 @@ setAiBrief(brief);
 // public anon key, bypassing this form and the AI cost guardrail
 // entirely. See docs/audits/2026-08-11-public-job-insert-tenant-binding-fix.md.
 // If this fails, we don't block the customer -- they've done their part.
+//
+// p_media is [] here on purpose, not media metadata -- there's no job id
+// yet to scope a storage path to. Real files are uploaded to Supabase
+// Storage AFTER this call returns the new job row (see below), then
+// linked onto the job via attach_job_media(). Previously this sent
+// {name, type} pairs straight into jobs.media with no actual file behind
+// them -- URL.createObjectURL() only ever produced a browser-local blob
+// URL that died the moment this tab closed, so nothing a plumber or
+// dispatcher could ever see reached the database. See
+// docs/migrations/2026-08-12-job-media-storage-bucket.sql.
+let failedUploads = 0;
 try {
-const { error: submitErr } = await supabase.rpc('submit_public_job', {
+const { data: job, error: submitErr } = await supabase.rpc('submit_public_job', {
 p_subdomain: COMPANY_SUBDOMAIN,
 p_customer_name: contactValue.name || null,
 p_customer_phone: contactValue.phone || null,
@@ -202,7 +225,7 @@ p_access: answers.access || null,
 p_cutting: answers.cutting || null,
 p_preference: answers.preference || null,
 p_leak_detection: answers.leak_detection || null,
-p_media: media.map((m) => ({ name: m.name, type: m.type })),
+p_media: [],
 p_ai_job_type: brief.jobType || null,
 p_ai_urgency: brief.urgency || null,
 p_ai_materials: brief.likelyMaterials || [],
@@ -210,17 +233,63 @@ p_ai_summary: brief.briefSummary || null,
 p_ai_watch_out: brief.watchOutFor || null,
 });
 if (submitErr) throw submitErr;
+
+// Upload attachments now that we have job.id and job.company_id --
+// both come straight from submit_public_job's trusted server-side
+// response, never guessed or client-supplied. This is safe to do with
+// the anon key directly: job.id is an unguessable gen_random_uuid(),
+// and the job-media bucket's INSERT policy only allows a write under
+// {company_id}/{job_id}/... when a job with exactly that id and
+// company_id actually exists -- so this can never be used to write
+// into another company's, or another job's, folder.
+//
+// Failures are per-file and non-fatal: one bad upload (network blip,
+// oversized file) doesn't lose the rest, and never loses the job
+// itself -- the count just gets surfaced on ResultScreen below instead
+// of silently pretending everything attached.
+if (job && media.length > 0) {
+const uploaded = [];
+await Promise.all(media.map(async (m) => {
+const safeName = `${Date.now()}-${m.name}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+const path = `${job.company_id}/${job.id}/${safeName}`;
+const { error: uploadErr } = await supabase.storage
+.from('job-media')
+.upload(path, m.file, { contentType: m.file?.type || undefined });
+if (uploadErr) {
+failedUploads += 1;
+console.error('Media upload failed for', m.name, uploadErr);
+} else {
+uploaded.push({ name: m.name, type: m.type, path });
+}
+}));
+
+if (uploaded.length > 0) {
+const { error: attachErr } = await supabase.rpc('attach_job_media', {
+p_job_id: job.id,
+p_subdomain: COMPANY_SUBDOMAIN,
+p_media: uploaded,
+});
+if (attachErr) {
+// Files reached storage but never got linked onto the job row --
+// from the dispatcher's side that's indistinguishable from "no
+// attachments," so it counts as a failure here too.
+console.error('Could not attach uploaded media to job:', attachErr);
+failedUploads = media.length;
+}
+}
+}
 } catch (dbErr) {
 // Saving failed silently for the customer; logged for us.
 console.error('Could not save job to database:', dbErr);
 } finally {
+setMediaUploadFailures(failedUploads);
 setLoading(false);
 }
 };
 
 if (submitted) {
-return <ResultScreen loading={loading} brief={aiBrief} answers={answers} media={media} onReset={() => {
-setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null);
+return <ResultScreen loading={loading} brief={aiBrief} answers={answers} media={media} mediaUploadFailures={mediaUploadFailures} onReset={() => {
+setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null); setMediaUploadFailures(0);
 }} />;
 }
 
@@ -444,7 +513,7 @@ to { opacity: 1; transform: translateY(0); }
 );
 }
 
-function ResultScreen({ loading, brief, answers, media, onReset }) {
+function ResultScreen({ loading, brief, answers, media, mediaUploadFailures, onReset }) {
 return (
 <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }} className="font-sans">
 <header style={{ borderBottom: '1px solid #2A2A2A' }} className="flex items-center justify-between px-6 py-5">
@@ -489,6 +558,15 @@ return (
 <Section label="Watch out for">
 <p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed">{brief?.watchOutFor}</p>
 </Section>
+
+{mediaUploadFailures > 0 && (
+<p style={{ color: '#E0A840', backgroundColor: '#241C0A', border: '1px solid #3A2F0E' }}
+className="text-xs rounded-md px-3 py-2.5 mb-6">
+{mediaUploadFailures === media.length
+? "Your job request was saved, but the attachment(s) didn't upload. The plumber will still see everything you typed -- just not the photo/video."
+: `${mediaUploadFailures} of ${media.length} attachment${media.length !== 1 ? 's' : ''} didn't upload, but the rest of your job request was saved.`}
+</p>
+)}
 
 {media.length > 0 && (
 <Section label="Attachments">
