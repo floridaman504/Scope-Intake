@@ -137,8 +137,22 @@ jobs:
           set -euo pipefail
           # -v mf=... + :'mf' is psql's own quoted-literal substitution --
           # safe against both shell and SQL injection, no manual escaping.
-          EXISTING=$(/usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -v mf="$MIGRATION_FILE" -tAc \
-            "select applied_at || ' via ' || applied_via from schema_migrations where filename = :'mf'")
+          #
+          # BUGFIX (2026-08-13): this used to pass the query via -c, e.g.
+          # `psql ... -tAc "select ... where filename = :'mf'"`. Confirmed
+          # by reproducing locally against a real Postgres: psql's :'var'
+          # substitution is NOT applied to a -c argument -- it only fires
+          # for input read as a script (stdin/heredoc or -f), so -c sent
+          # the literal, unsubstituted text ":'mf'" to the server and every
+          # run failed with "syntax error at or near ':'" before ever
+          # reaching the actual migration. First real production run
+          # (2026-08-13) caught this -- it never touched the database
+          # beyond the earlier idempotent "create table if not exists".
+          # Fixed by feeding the query through stdin instead of -c.
+          EXISTING=$(/usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -v mf="$MIGRATION_FILE" -tA <<'SQL'
+          select applied_at || ' via ' || applied_via from schema_migrations where filename = :'mf';
+          SQL
+          )
           if [ -n "$EXISTING" ]; then
             echo "::error::$MIGRATION_FILE is already recorded as applied ($EXISTING). Refusing to re-run."
             exit 1
@@ -191,7 +205,10 @@ jobs:
         run: |
           set -euo pipefail
           APPLIED_VIA="backfill:github-actions:${RUN_ID} (recorded by ${ACTOR})"
+          # See the BUGFIX note in "Refuse if already applied" above -- same
+          # -c-doesn't-substitute-:'var' issue, same fix (stdin instead of -c).
           /usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
-            -v mf="$MIGRATION_FILE" -v av="$APPLIED_VIA" -v vh="$VERIFIED_HOW" \
-            -c "insert into schema_migrations (filename, applied_via, notes) values (:'mf', :'av', :'vh');"
+            -v mf="$MIGRATION_FILE" -v av="$APPLIED_VIA" -v vh="$VERIFIED_HOW" <<'SQL'
+          insert into schema_migrations (filename, applied_via, notes) values (:'mf', :'av', :'vh');
+          SQL
           echo "Recorded $MIGRATION_FILE as already-applied (SQL was NOT executed)."
