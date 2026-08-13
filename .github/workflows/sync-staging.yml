@@ -83,8 +83,22 @@ jobs:
       - name: Restore schema into staging
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        # BUGFIX (2026-08-13): the comment below says "NOT using set -e
+        # around this specific command on purpose" -- but GitHub Actions'
+        # own default shell for run: steps is `bash --noprofile --norc -eo
+        # pipefail {0}`, which already has -e (errexit) turned on before
+        # this script's own `set -uo pipefail` line ever runs. Setting
+        # -u/pipefail from inside the script doesn't remove a -e that was
+        # already active from the invocation, so pg_restore's tolerated,
+        # expected-to-fail exit code was still killing the step immediately
+        # -- confirmed by reproducing locally: under a real `bash -e {0}}`
+        # invocation the script dies right after pg_restore and the
+        # "pg_restore exited N -- ..." message never even prints, exactly
+        # matching what the first real run's log showed. Fixed by
+        # overriding the step's shell to drop -e, which is what the
+        # comment already described wanting.
+        shell: bash --noprofile --norc -uo pipefail {0}
         run: |
-          set -uo pipefail
           # --clean --if-exists: drop-and-recreate each object so staging
           # ends up EXACTLY matching production's current shape, even if
           # staging already had an older/different version of something.
