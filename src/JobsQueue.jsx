@@ -16,6 +16,48 @@ function minutesSince(dateStr) {
   return (Date.now() - new Date(dateStr).getTime()) / 60000;
 }
 
+// 2026-08-13 (jobs-view redesign, phase 1 -- list/agenda first, calendar
+// grid deferred to a later phase per Dante's own pick between the two
+// options). Groups jobs by scheduled_start for the agenda view. Unscheduled
+// jobs surface first (they're the ones that need a dispatcher's attention),
+// then Today/Tomorrow/This week/Later, then anything in the past. `now` is
+// a parameter (not Date.now() inline) purely so this is deterministic to
+// unit test.
+const AGENDA_GROUP_ORDER = ['Unscheduled', 'Today', 'Tomorrow', 'This week', 'Later', 'Past'];
+
+export function scheduleGroupFor(job, now = new Date()) {
+  if (!job.scheduled_start) return 'Unscheduled';
+  const start = new Date(job.scheduled_start);
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((startDay - today) / 86400000);
+  if (diffDays < 0) return 'Past';
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays <= 7) return 'This week';
+  return 'Later';
+}
+
+// <input type="datetime-local"> works in the browser's local timezone and
+// expects/returns "YYYY-MM-DDTHH:mm" with no offset -- these two helpers
+// are the only place that boundary is crossed, everywhere else in this
+// file scheduled_start/scheduled_end stay as UTC ISO strings (what's
+// actually stored in Postgres).
+function toDatetimeLocalValue(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(localValue) {
+  if (!localValue) return null;
+  const d = new Date(localValue);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 // task #41 (dispatcher dashboard, assignment/status/notes/search): this
 // page now serves three different roles with three different jobs to do,
 // per the task #24 follow-on requirements --
@@ -30,9 +72,33 @@ function minutesSince(dateStr) {
 //     employee can SELECT any of their company's jobs -- so the
 //     "plumber only sees their own" scoping below is a deliberate
 //     UI-layer choice, not something the database enforces for them).
-//     No assign control, no status control, no notes (job_notes RLS is
-//     owner/dispatcher only -- see JobNotes.jsx), just their job list
-//     with search.
+//     No assign control, no status control, just their job list with
+//     search. (2026-08-13: plumbers now DO get notes -- see below.)
+//
+// 2026-08-13 (jobs-view redesign): time-window scheduling + plumber/owner
+// duration, confirmed with Dante after two rounds of competitor research.
+//   - scheduled_start/scheduled_end: owner/dispatcher only, via the
+//     existing raw jobs UPDATE they already have (jobs_update_owner_
+//     dispatcher_company). Independent from duration by design -- setting
+//     one never moves the other (see 2026-08-13-job-scheduling-window-and-
+//     duration.sql for the full reasoning).
+//   - estimated_duration_minutes: owner or an assigned plumber only, via
+//     the new set_job_duration RPC -- dispatcher has no UI control for it
+//     AND is blocked at the DB level (jobs_before_update_duration_scope_
+//     lock trigger), not just hidden in the UI.
+//   - job_notes: plumbers can now read+write notes on jobs they're
+//     assigned to (2026-08-13-job-notes-plumber-access.sql), and job_notes
+//     is now in the supabase_realtime publication, so a plumber's note
+//     shows up for the owner/dispatcher instantly and vice versa -- see
+//     JobNotes.jsx for the realtime subscription itself.
+//   - The "Details" expand affordance is no longer isManager-only --
+//     plumbers get it too, scoped to jobs they're already restricted to
+//     seeing via visibleJobs above, so there's no new exposure.
+//   - Agenda grouping (Unscheduled/Today/Tomorrow/This week/Later/Past,
+//     see scheduleGroupFor above) replaces the flat list for every role.
+//     This is the "list/agenda first" option Dante picked over building a
+//     full drag-and-drop calendar grid immediately -- that's flagged as a
+//     clearly-scoped phase 2, not attempted here.
 //
 // task (2026-08-10, multi-assignee / "buddy work"): a job can now have
 // more than one assignee -- any mix of plumbers and/or the owner --
@@ -77,7 +143,7 @@ export default function JobsQueue() {
     setError('');
     const { data: jobRows, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status, media')
+      .select('id, created_at, customer_name, customer_phone, customer_email, ai_job_type, ai_urgency, ai_summary, ai_watch_out, status, media, scheduled_start, scheduled_end, estimated_duration_minutes')
       .order('created_at', { ascending: false });
 
     if (jobErr) {
@@ -178,6 +244,22 @@ export default function JobsQueue() {
       });
     }
 
+    // Agenda ordering: group first (unscheduled surfaces first -- those
+    // are the ones needing a dispatcher's attention), then by
+    // scheduled_start within a group, then fall back to the original
+    // newest-first order for jobs with no schedule at all.
+    list = [...list].sort((a, b) => {
+      const ga = AGENDA_GROUP_ORDER.indexOf(scheduleGroupFor(a));
+      const gb = AGENDA_GROUP_ORDER.indexOf(scheduleGroupFor(b));
+      if (ga !== gb) return ga - gb;
+      if (a.scheduled_start && b.scheduled_start) {
+        return new Date(a.scheduled_start) - new Date(b.scheduled_start);
+      }
+      if (a.scheduled_start) return -1;
+      if (b.scheduled_start) return 1;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
     return list;
   }, [jobs, role, employee, assigneeFilter, statusFilters, search, employeesById, assigneesByJob]);
 
@@ -197,6 +279,43 @@ export default function JobsQueue() {
       .eq('id', jobId);
     if (updateErr) {
       setError('Could not update status: ' + updateErr.message);
+      return;
+    }
+    await load();
+  };
+
+  // Owner/dispatcher only in the UI -- backed up by the existing
+  // jobs_update_owner_dispatcher_company RLS policy (plumbers have no raw
+  // UPDATE grant on jobs at all, so this would fail server-side for them
+  // regardless of what the UI shows).
+  const handleScheduleChange = async (jobId, field, localValue) => {
+    setError('');
+    const { error: updateErr } = await supabase
+      .from('jobs')
+      .update({ [field]: fromDatetimeLocalValue(localValue) })
+      .eq('id', jobId);
+    if (updateErr) {
+      setError('Could not update schedule: ' + updateErr.message);
+      return;
+    }
+    await load();
+  };
+
+  // Owner or an assigned plumber only -- enforced by set_job_duration
+  // itself (SECURITY DEFINER, checks role + job_assignees membership) and
+  // by jobs_before_update_duration_scope_lock, which blocks a dispatcher
+  // from setting this column even via a raw update. Never call
+  // .from('jobs').update({ estimated_duration_minutes }) directly.
+  const handleDurationChange = async (jobId, minutesValue) => {
+    setError('');
+    const minutes = minutesValue === '' ? null : parseInt(minutesValue, 10);
+    if (minutes !== null && (!Number.isFinite(minutes) || minutes <= 0)) {
+      setError('Duration must be a positive number of minutes');
+      return;
+    }
+    const { error: rpcErr } = await supabase.rpc('set_job_duration', { p_job_id: jobId, p_minutes: minutes });
+    if (rpcErr) {
+      setError('Could not update duration: ' + rpcErr.message);
       return;
     }
     await load();
@@ -231,6 +350,11 @@ export default function JobsQueue() {
   };
 
   const unclaimedCount = jobs.filter((j) => (assigneesByJob[j.id] || []).length === 0 && j.status !== 'cancelled').length;
+
+  // Mutated inside the visibleJobs.map() below to detect when the agenda
+  // group changes so a header only renders once per group. Local to this
+  // render call (redeclared fresh every render), not persisted state.
+  let lastGroup = null;
 
   return (
     <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
@@ -330,9 +454,23 @@ export default function JobsQueue() {
             const borderColor = isOverdue ? colors.danger : isUnclaimed ? colors.gold : colors.border;
             const bgColor = isOverdue ? colors.dangerBg : isUnclaimed ? '#1E1A0A' : colors.panel;
 
+            const group = scheduleGroupFor(j);
+            const showGroupHeader = group !== lastGroup;
+            lastGroup = group;
+            // Plumbers only ever see jobs they're assigned to (visibleJobs
+            // already hard-filters this above), so "expanded + plumber"
+            // always means "expanded + my own job" -- no extra per-job
+            // assignment check needed here for gating notes/media/duration.
+            const canSeeDetails = isManager || role === 'plumber';
+
             return (
+              <React.Fragment key={j.id}>
+                {showGroupHeader && (
+                  <div style={{ color: colors.faint }} className="text-xs font-bold uppercase tracking-widest mt-5 mb-1 first:mt-0">
+                    {group}
+                  </div>
+                )}
               <div
-                key={j.id}
                 style={{ backgroundColor: bgColor, border: `1px solid ${borderColor}` }}
                 className="rounded-lg p-4"
               >
@@ -357,10 +495,22 @@ export default function JobsQueue() {
                           Missed lead risk
                         </span>
                       )}
+                      {j.estimated_duration_minutes && (
+                        <span style={{ backgroundColor: colors.panelAlt, color: colors.muted, border: `1px solid ${colors.borderLight}` }}
+                          className="text-[11px] font-semibold px-2 py-0.5 rounded-full">
+                          ~{j.estimated_duration_minutes} min
+                        </span>
+                      )}
                     </div>
                     <p style={{ color: colors.faint }} className="text-xs mt-1">
                       {new Date(j.created_at).toLocaleString()} · {Math.floor(age)} min ago
                     </p>
+                    {j.scheduled_start && (
+                      <p style={{ color: colors.gold }} className="text-xs mt-1 font-medium">
+                        Scheduled: {new Date(j.scheduled_start).toLocaleString()}
+                        {j.scheduled_end ? ` – ${new Date(j.scheduled_end).toLocaleTimeString()}` : ''}
+                      </p>
+                    )}
                     {(j.customer_name || j.customer_phone || j.customer_email) && (
                       <p style={{ color: colors.muted }} className="text-xs mt-2">
                         {j.customer_name || 'Unknown name'}
@@ -375,8 +525,9 @@ export default function JobsQueue() {
                       <p style={{ color: colors.faint }} className="text-xs mt-1 italic">Watch out for: {j.ai_watch_out}</p>
                     )}
 
-                    {isManager && isExpanded && (
+                    {canSeeDetails && isExpanded && (
                       <div className="mt-3 space-y-3">
+                        {isManager && (
                         <div>
                           <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
                             Status
@@ -392,7 +543,9 @@ export default function JobsQueue() {
                             ))}
                           </select>
                         </div>
+                        )}
 
+                        {isManager && (
                         <div>
                           <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
                             Assignment
@@ -406,6 +559,57 @@ export default function JobsQueue() {
                             onChanged={load}
                           />
                         </div>
+                        )}
+
+                        {isManager && (
+                        <div>
+                          <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
+                            Scheduled window
+                          </label>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <input
+                              type="datetime-local"
+                              value={toDatetimeLocalValue(j.scheduled_start)}
+                              onChange={(e) => handleScheduleChange(j.id, 'scheduled_start', e.target.value)}
+                              style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
+                              className="text-base rounded-md px-3 py-2.5 flex-1"
+                            />
+                            <input
+                              type="datetime-local"
+                              value={toDatetimeLocalValue(j.scheduled_end)}
+                              onChange={(e) => handleScheduleChange(j.id, 'scheduled_end', e.target.value)}
+                              style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
+                              className="text-base rounded-md px-3 py-2.5 flex-1"
+                            />
+                          </div>
+                          <p style={{ color: colors.faint }} className="text-[11px] mt-1">
+                            This is the calendar window only. It's independent from the duration
+                            below -- the assigned plumber (or you) sets that separately once they
+                            know how long the job will actually take.
+                          </p>
+                        </div>
+                        )}
+
+                        {(isOwner || role === 'plumber') && (
+                        <div>
+                          <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
+                            Estimated duration (minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            defaultValue={j.estimated_duration_minutes || ''}
+                            onBlur={(e) => handleDurationChange(j.id, e.target.value)}
+                            placeholder="e.g. 45"
+                            style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
+                            className="text-base rounded-md px-3 py-2.5 w-32"
+                          />
+                          <p style={{ color: colors.faint }} className="text-[11px] mt-1">
+                            Only you or the owner can set this -- the dispatcher can't guess how
+                            long a job will take, so they never see this control.
+                          </p>
+                        </div>
+                        )}
 
                         {j.media?.length > 0 && <JobMedia media={j.media} />}
 
@@ -426,7 +630,7 @@ export default function JobsQueue() {
                   </div>
                 )}
 
-                  {isManager && (
+                  {canSeeDetails && (
                     <button
                       onClick={() => setExpandedId(isExpanded ? null : j.id)}
                       style={{ color: colors.gold, border: `1px solid ${colors.borderLight}` }}
@@ -438,6 +642,7 @@ export default function JobsQueue() {
                 </div>
               </div>
               </div>
+              </React.Fragment>
             );
           })}
         </div>
