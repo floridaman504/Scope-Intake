@@ -8,6 +8,7 @@ import ResetPassword from './ResetPassword.jsx'
 import Join from './Join.jsx'
 import Dashboard from './Dashboard.jsx'
 import JobsQueue from './JobsQueue.jsx'
+import EmployeeManagement from './EmployeeManagement.jsx'
 import SessionRegistry from './SessionRegistry.jsx'
 import NotFound from './NotFound.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
@@ -46,6 +47,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
                 // get the full assign/status/notes/search view.
                 <ProtectedRoute allowedRoles={['owner', 'dispatcher', 'plumber']}>
                   <JobsQueue />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/employees"
+              element={
+                <ProtectedRoute allowedRoles={['owner']}>
+                  <EmployeeManagement />
                 </ProtectedRoute>
               }
             />

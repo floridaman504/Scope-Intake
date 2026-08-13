@@ -68,6 +68,22 @@ describe('AuthContext', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('employees');
   });
 
+  it('treats a deactivated employee the same as no employee row', async () => {
+    mockSupabase.auth.getSession.mockResolvedValue({ data: { session: AUTH_SESSION } });
+    setTableResponse('employees', {
+      data: { role: 'plumber', full_name: 'Jamie', email: 'jamie@scope.test', deactivated_at: '2026-08-12T00:00:00Z' },
+      error: null,
+    });
+    await renderConsumer();
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+    // The row loaded successfully -- this isn't a query error -- but a
+    // deactivated employee should be treated as logged-out for app
+    // purposes (ProtectedRoute's allowedRoles check bounces a null
+    // employee the same way it would an unrecognized account).
+    expect(screen.getByTestId('employee-role')).toHaveTextContent('none');
+  });
+
   it('sets employee to null if the employees lookup errors', async () => {
     mockSupabase.auth.getSession.mockResolvedValue({ data: { session: AUTH_SESSION } });
     setTableResponse('employees', { data: null, error: { message: 'no rows' } });

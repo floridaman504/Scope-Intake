@@ -86,6 +86,15 @@ export default function Dashboard() {
       </Link>
 
       <div className="flex flex-wrap gap-3 mb-4">
+        {employee?.role === 'owner' && (
+          <Link
+            to="/employees"
+            style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
+            className="text-sm px-4 py-2 rounded-md"
+          >
+            Manage team
+          </Link>
+        )}
         <button
           onClick={signOut}
           style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}

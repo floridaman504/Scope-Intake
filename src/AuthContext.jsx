@@ -82,10 +82,21 @@ export function AuthProvider({ children }) {
     //   not what the database trusts.
     const { data, error } = await supabase
       .from('employees')
-      .select('id, user_id, company_id, role, full_name, email')
+      .select('id, user_id, company_id, role, full_name, email, deactivated_at')
       .eq('user_id', userId)
       .single();
-    setEmployee(!error && data ? data : null);
+    // A deactivated employee (docs/migrations/2026-08-12-employee-
+    // deactivation-and-email-constraint.sql) is treated exactly like "no
+    // employee row" -- ProtectedRoute already bounces that case with a
+    // clear "you don't have access" message on every route (every route in
+    // main.jsx passes allowedRoles), so this doesn't need its own special
+    // handling there. The real enforcement is server-side regardless:
+    // get_my_company_id()/get_my_role() also return NULL for a deactivated
+    // employee, so even a still-valid JWT can't read/write anything
+    // RLS-gated -- this local check is just so the UI doesn't keep treating
+    // them as logged in until the next query fails.
+    const row = !error && data ? data : null;
+    setEmployee(row && !row.deactivated_at ? row : null);
   };
 
   // Reuses a previously registered session row (persisted per-tab in
