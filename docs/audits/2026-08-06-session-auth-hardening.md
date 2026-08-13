@@ -1,5 +1,21 @@
 # Session/Auth Hardening — 2026-08-06
 
+**Update (2026-08-13): applied and verified.** `supabase_session_hardening.sql`
+is live on production (`etpzprrroxjjroisboui`) -- both tables, RLS, all four
+`SECURITY DEFINER` functions, and the `user_sessions` realtime publication
+entry all confirmed present via direct SQL. At verification time
+`user_sessions` already held 25 real rows across 4 distinct users, oldest
+dated 2026-08-09 -- so the app-level hardening (per-role session TTL,
+3-device concurrent cap, revocation, activity-aware timeout) was already
+live and working in practice several days before this doc and the
+migration file's header comment were corrected to say so. The
+"Exactly what SQL is pending Dante's go-ahead" section and the manual
+verification checklist below are left as-written for the historical
+record of what this item required before it shipped; treat both as
+resolved. The RLS grant-tightening `revoke` statements from the
+cross-tenant audit are a separate, still-open item, not part of this one.
+
+
 ## Question this answers
 Tier 1 item 3: does Scope's session management hold up to the playbook's
 five requirements (per-role expiration, concurrent-session limits, a
