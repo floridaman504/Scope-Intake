@@ -182,6 +182,7 @@ jobs:
           grant select, insert, update, delete on public.pricebook_items to authenticated;
           grant select, insert, update on public.job_estimates to authenticated;
           grant select, insert, update, delete on public.job_estimate_line_items to authenticated;
+          grant select, insert, delete on public.job_assignees to authenticated;
           -- companies, billing_guardrails, login_attempts intentionally
           -- receive zero anon/authenticated grants -- see task #22.
           -- job_notes added for task #24 (dispatcher dashboard). pricebook_items,
@@ -189,5 +190,13 @@ jobs:
           -- (pricing estimator, Phase 1) -- keep this list in sync every time a
           -- new table gets grants; this is exactly the step that was missing
           -- before task #23 found it.
+          -- job_assignees added 2026-08-14 -- this table was missed when
+          -- 2026-08-13-tighten-table-grants.sql was written (added
+          -- 2026-08-10, three days before that migration, but overlooked),
+          -- which broke the live jobs page's assignment loading the moment
+          -- that migration hit production. See
+          -- 2026-08-14-grant-job-assignees-table.sql for the production fix
+          -- -- this mirrors it here so staging doesn't regress the same gap
+          -- on its next sync.
           SQL
           echo "Grants reapplied to match production's minimal-privilege scheme."
