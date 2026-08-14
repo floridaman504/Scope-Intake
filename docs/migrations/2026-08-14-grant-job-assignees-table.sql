@@ -1,0 +1,33 @@
+-- 2026-08-14: grant select/insert/delete on job_assignees to authenticated
+-- (regression fix for 2026-08-13-tighten-table-grants.sql)
+--
+-- What happened: the grant-tightening migration revoked ALL table-level
+-- privileges from anon/authenticated and re-granted only a specific list
+-- of tables. job_assignees (added 2026-08-10-job-assignees-multi-assignee.sql,
+-- three days before the tightening migration was written) was missed from
+-- that list -- not intentionally excluded like companies/billing_guardrails/
+-- login_attempts, just overlooked. The very next production check after
+-- applying the tightening migration found it live: the jobs page failed
+-- with "Could not load assignments: permission denied for table
+-- job_assignees" for every logged-in user.
+--
+-- Table-level privileges to grant, matching job_assignees' own RLS
+-- policies (2026-08-10-job-assignees-multi-assignee.sql):
+--   job_assignees_select_company:            select, to authenticated
+--   job_assignees_insert_owner_dispatcher:    insert, to authenticated
+--   job_assignees_delete_owner_dispatcher:    delete, to authenticated
+-- No update policy exists on job_assignees, so no update grant.
+-- RLS still does all the real row-level scoping (company/role) -- this
+-- only restores the table-level access those policies need to run at all.
+
+grant select, insert, delete on public.job_assignees to authenticated;
+
+-- Verification query (run after applying):
+--   select table_name, grantee, string_agg(privilege_type, ', ' order by privilege_type)
+--     from information_schema.role_table_grants
+--     where table_schema = 'public' and table_name = 'job_assignees'
+--       and grantee in ('anon', 'authenticated')
+--     group by 1, 2 order by 1, 2;
+--   -- expect: authenticated | DELETE, INSERT, SELECT
+--   -- Then load the jobs page as a logged-in owner/dispatcher/plumber and
+--   -- confirm "Could not load assignments" is gone.
