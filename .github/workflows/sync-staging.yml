@@ -83,46 +83,49 @@ jobs:
       - name: Restore schema into staging
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
-        # BUGFIX (2026-08-13): the comment below says "NOT using set -e
-        # around this specific command on purpose" -- but GitHub Actions'
-        # own default shell for run: steps is `bash --noprofile --norc -eo
-        # pipefail {0}`, which already has -e (errexit) turned on before
-        # this script's own `set -uo pipefail` line ever runs. Setting
-        # -u/pipefail from inside the script doesn't remove a -e that was
-        # already active from the invocation, so pg_restore's tolerated,
-        # expected-to-fail exit code was still killing the step immediately
-        # -- confirmed by reproducing locally: under a real `bash -e {0}}`
-        # invocation the script dies right after pg_restore and the
-        # "pg_restore exited N -- ..." message never even prints, exactly
-        # matching what the first real run's log showed. Fixed by
-        # overriding the step's shell to drop -e, which is what the
-        # comment already described wanting.
-        shell: bash --noprofile --norc -uo pipefail {0}
+        # BUGFIX (2026-08-14): the previous approach here was `pg_restore
+        # --clean --if-exists`, which drops and recreates each object
+        # ONE AT A TIME in dependency order. That silently breaks when
+        # objects have a circular-ish dependency through the schema itself
+        # (confirmed live: a run's log showed `DROP SCHEMA IF EXISTS
+        # public;` failing because a function "depends on schema public" --
+        # trivially true for every object -- which made pg_restore fall
+        # back to per-object drops, and THOSE failed too with "already
+        # exists" for table/function pairs that couldn't cleanly swap).
+        # The result: pg_restore reported "errors ignored on restore: N"
+        # and the previous version of this step was built to tolerate
+        # that and continue -- but "tolerate" meant staging was left in a
+        # split-vintage state: a table that kept its OLD (pre-sync)
+        # column set (its DROP failed, so the old version survived)
+        # alongside a function that got the NEW definition (CREATE OR
+        # REPLACE FUNCTION doesn't validate column references against the
+        # table at creation time). This exact split caused
+        # jobs_before_update_duration_scope_lock() to reference
+        # estimated_duration_minutes on a jobs table that, on staging,
+        # didn't actually have that column -- caught by
+        # cross-tenant-isolation-test.yml crashing with "record \"new\"
+        # has no field \"estimated_duration_minutes\"" on PR #26, even
+        # though PR #26 never touched the jobs table. The "Verify staging
+        # matches production's table list" step after this one only
+        # compares TABLE NAMES, so it couldn't catch a table existing
+        # under both names but with different actual columns.
+        #
+        # Fixed properly this time: DROP the entire public schema with
+        # CASCADE (no per-object ambiguity possible -- CASCADE handles
+        # any dependency order) and let the dump's own embedded `CREATE
+        # SCHEMA public;` recreate it from nothing, so pg_restore always
+        # populates a truly empty schema. No more --clean/--if-exists,
+        # no more tolerated errors -- verified locally that this produces
+        # a byte-for-byte-equivalent restore with pg_restore exiting 0.
+        # Staging holds zero real customer data (see this workflow's top
+        # comment), so a full CASCADE drop here is safe -- there's nothing
+        # to lose.
         run: |
-          # --clean --if-exists: drop-and-recreate each object so staging
-          # ends up EXACTLY matching production's current shape, even if
-          # staging already had an older/different version of something.
-          #
-          # NOT using `set -e` around this specific command on purpose:
-          # --if-exists stops pg_restore from failing when a POLICY or
-          # TRIGGER it's trying to drop doesn't exist, but it can't stop
-          # the error when the underlying TABLE those belong to doesn't
-          # exist yet either (e.g. the very first sync into a brand new,
-          # empty staging database) -- `DROP POLICY IF EXISTS x ON
-          # some_table` still errors if `some_table` itself is missing.
-          # pg_restore already treats these as non-fatal and keeps going
-          # (it prints "errors ignored on restore: N" and continues), but
-          # it also exits 1 afterward to flag that something was skipped.
-          # The real correctness check is the next step, which compares
-          # staging's actual table list against production's -- that's
-          # what decides pass/fail, not this exit code.
+          set -euo pipefail
+          /usr/lib/postgresql/17/bin/psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -c "drop schema if exists public cascade;"
           /usr/lib/postgresql/17/bin/pg_restore \
-            --clean --if-exists --no-owner --no-privileges \
+            --no-owner --no-privileges \
             -d "$STAGING_DB_URL" schema.dump
-          restore_exit=$?
-          if [ "$restore_exit" -ne 0 ]; then
-            echo "pg_restore exited $restore_exit -- usually just harmless 'DROP ... IF EXISTS' noise on a schema that changed shape. Continuing to the verification step, which is the real pass/fail gate."
-          fi
 
       - name: Verify staging matches production's table list
         env:
