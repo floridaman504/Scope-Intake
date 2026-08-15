@@ -25,6 +25,44 @@ export default async function handler(req, res) {
   try {
     const { summary, mediaCount, mediaTypes, subdomain } = req.body;
 
+    // Input limits (Tier 2 #9 of docs/scope-operational-playbook.md).
+    // This endpoint is public and unauthenticated, and `summary` gets
+    // concatenated directly into the AI prompt below -- an unbounded value
+    // here is both a prompt-injection surface and an unbounded-cost vector
+    // (more input tokens = more spend, on an endpoint anyone can hit
+    // repeatedly, ahead of check_rate_limit's own per-IP/per-company caps).
+    // Rejecting outright (400) rather than silently truncating is
+    // deliberate -- a truncated `summary` could produce a misleadingly
+    // confident brief from a half-cut-off description, which is worse for
+    // the plumber reading it than a clear "something's wrong, try again"
+    // for the customer. 6000 chars comfortably covers the real form (7
+    // answer fields, longest capped at 2000 chars client-side in
+    // ScopeIntake.jsx, plus question-title prefixes) with room to spare.
+    // mediaCount's cap of 8 matches the client-side attachment limit and
+    // the jobs_media_count DB constraint (docs/migrations/2026-08-15-add-input-limits.sql)
+    // -- three independent layers agreeing on the same number on purpose.
+    if (typeof summary !== 'string' || summary.trim().length === 0) {
+      return res.status(400).json({ error: 'summary is required' });
+    }
+    if (summary.length > 6000) {
+      return res.status(400).json({ error: 'summary is too long' });
+    }
+    if (mediaCount !== undefined && mediaCount !== null) {
+      if (!Number.isInteger(mediaCount) || mediaCount < 0 || mediaCount > 8) {
+        return res.status(400).json({ error: 'mediaCount is invalid' });
+      }
+    }
+    if (mediaTypes !== undefined && mediaTypes !== null) {
+      if (typeof mediaTypes !== 'string' || mediaTypes.length > 200) {
+        return res.status(400).json({ error: 'mediaTypes is invalid' });
+      }
+    }
+    if (subdomain !== undefined && subdomain !== null) {
+      if (typeof subdomain !== 'string' || subdomain.length > 100) {
+        return res.status(400).json({ error: 'subdomain is invalid' });
+      }
+    }
+
     // Vercel sets x-forwarded-for to the real client IP (first entry if
     // the request passed through multiple proxies).
     const ip =

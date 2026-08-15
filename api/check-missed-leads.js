@@ -14,6 +14,22 @@
 // few minutes with a shared secret so randoms on the internet can't
 // trigger it.
 //
+// escapeHtml: job fields interpolated into the alert email body below
+// (customer_name, ai_job_type, etc.) all originate from the public,
+// unauthenticated intake form -- nothing stops a customer from typing
+// `<img src=x onerror=alert(1)>` as their name. This endpoint used to
+// interpolate those values into the email's `html` field completely raw
+// (Tier 2 #9 audit finding, docs/scope-operational-playbook.md) -- a
+// stored HTML/script injection into whatever mail client the
+// owner/dispatcher reads the alert in. Escaping the five HTML metacharacters
+// is enough here since these values only ever land inside plain <p> text
+// content below, never inside an attribute or a <script> context.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // MULTI-ASSIGNEE NOTE (2026-08-10): assignment moved from a single
 // jobs.claimed_by column to a job_assignees junction table (a job can now
 // have multiple plumbers and/or the owner assigned -- "buddy work"). This
@@ -123,11 +139,15 @@ export default async function handler(req, res) {
             // own domain in Resend before this can reach real recipients.
             from: 'Scope Alerts <alerts@mail.scopwell.com>',
             to: emails,
+            // Subject line isn't HTML, but Resend/most mail clients render
+            // it as plain text anyway -- escaping isn't needed there, only
+            // in the html body below where a raw `<` or `&` would actually
+            // be interpreted as markup.
             subject: `Missed lead: ${job.ai_job_type || 'a job'} unclaimed for ${ageMinutes} min`,
             html: `
               <p><strong>A job has gone unclaimed for over an hour.</strong></p>
-              <p>${job.ai_job_type || 'Job'} — ${job.ai_urgency || 'Medium'} urgency</p>
-              <p>Customer: ${job.customer_name || 'Unknown'} ${job.customer_phone ? '· ' + job.customer_phone : ''} ${job.customer_email ? '· ' + job.customer_email : ''}</p>
+              <p>${escapeHtml(job.ai_job_type) || 'Job'} — ${escapeHtml(job.ai_urgency) || 'Medium'} urgency</p>
+              <p>Customer: ${escapeHtml(job.customer_name) || 'Unknown'} ${job.customer_phone ? '· ' + escapeHtml(job.customer_phone) : ''} ${job.customer_email ? '· ' + escapeHtml(job.customer_email) : ''}</p>
               <p>Submitted ${ageMinutes} minutes ago.</p>
               <p><a href="https://scope-intake.vercel.app/jobs">Open the jobs queue</a></p>
             `,

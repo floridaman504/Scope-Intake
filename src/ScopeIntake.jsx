@@ -85,6 +85,21 @@ options: ['Leak detection already done', 'Not done yet', 'Not applicable -- leak
 
 const TOTAL = STEPS.length;
 
+// Mirrors the job-media storage bucket's server-side limits, applied in
+// docs/migrations/2026-08-15-add-input-limits.sql (file_size_limit /
+// allowed_mime_types) and the jobs_media_count DB constraint (max 8 per
+// job). Checking here too isn't redundant -- without it, a customer who
+// picks an oversized file or hits the 9th attachment doesn't find out
+// until the upload silently fails deep inside saveJob after they've
+// already submitted, instead of a clear message at the moment they pick
+// the file.
+const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB, matches the bucket's file_size_limit
+const MAX_FILES = 8;
+const ALLOWED_MEDIA_TYPES = [
+'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+'video/mp4', 'video/quicktime', 'video/webm', 'video/3gpp',
+];
+
 export default function ScopeIntake() {
 const [step, setStep] = useState(0);
 const [answers, setAnswers] = useState({});
@@ -104,6 +119,10 @@ const [mediaUploadFailures, setMediaUploadFailures] = useState(0);
 // show the "ready for dispatch" brief when it's true. See handleSubmit's
 // comment on why this used to fail silently.
 const [submitFailed, setSubmitFailed] = useState(false);
+// Friendly inline message when handleFile rejects one or more picked
+// files (too big, wrong type, or over the 8-file cap) -- cleared on the
+// next successful pick so it doesn't linger after the customer fixes it.
+const [mediaError, setMediaError] = useState('');
 const fileInputRef = useRef(null);
 
 const current = STEPS[step];
@@ -133,13 +152,50 @@ const back = () => { if (step > 0) setStep(step - 1); };
 
 const handleFile = (e) => {
 const files = Array.from(e.target.files || []);
+// Reset the file input's value so picking the exact same file again
+// later (e.g. after removing it) still fires onChange -- browsers don't
+// re-fire a change event for an unchanged file list otherwise.
+e.target.value = '';
+
+const accepted = [];
+const rejections = [];
+for (const f of files) {
+if (!ALLOWED_MEDIA_TYPES.includes(f.type)) {
+rejections.push(`${f.name} isn't a supported photo/video type`);
+continue;
+}
+if (f.size > MAX_FILE_BYTES) {
+rejections.push(`${f.name} is over the 25 MB limit`);
+continue;
+}
+accepted.push(f);
+}
+
+// Cap total attachments at 8, matching the jobs_media_count DB
+// constraint and the server-side check in api/review-job.js -- applied
+// after the per-file checks above so a customer sees the specific
+// per-file reason first when both problems exist at once.
+const room = Math.max(0, MAX_FILES - media.length);
+const toAdd = accepted.slice(0, room);
+if (accepted.length > toAdd.length) {
+rejections.push(`only ${MAX_FILES} attachments are allowed per job -- ${accepted.length - toAdd.length} more skipped`);
+}
+
+if (rejections.length > 0) {
+setMediaError(rejections.join('; '));
+} else {
+setMediaError('');
+}
+
+if (toAdd.length === 0) return;
+
 // `url` is a browser-local blob URL, used only for the in-form preview
 // below and on the immediate post-submit ResultScreen (it stays valid for
 // the rest of this tab's life). `file` is the actual File object -- that's
 // what gets uploaded to Supabase Storage in handleSubmit, once a job id
 // exists to scope the storage path to. See
 // docs/migrations/2026-08-12-job-media-storage-bucket.sql.
-const mapped = files.map((f) => ({
+const mapped = toAdd.map((f) => ({
 name: f.name,
 type: f.type.startsWith('video') ? 'video' : 'image',
 url: URL.createObjectURL(f),
@@ -335,7 +391,7 @@ mediaUploadFailures={mediaUploadFailures}
 submitFailed={submitFailed}
 onRetry={retrySave}
 onReset={() => {
-setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null); setMediaUploadFailures(0); setSubmitFailed(false);
+setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null); setMediaUploadFailures(0); setSubmitFailed(false); setMediaError('');
 }} />;
 }
 
@@ -393,6 +449,13 @@ value={answers[current.id] || ''}
 onChange={(e) => setAnswer(e.target.value)}
 placeholder={current.placeholder}
 rows={4}
+// Matches the jobs_context_length / jobs_access_length DB constraints
+// (docs/migrations/2026-08-15-add-input-limits.sql) and the 6000-char
+// server-side summary cap in api/review-job.js -- this is the friendly
+// front line, not the only line: a customer just can't type past 2000
+// characters in the first place, rather than typing more and getting
+// rejected later at submit time.
+maxLength={2000}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors resize-none text-base shadow-inner"
 />
@@ -405,6 +468,8 @@ type="text"
 value={answers[current.id] || ''}
 onChange={(e) => setAnswer(e.target.value)}
 placeholder={current.placeholder}
+// Matches jobs_fixture_length in docs/migrations/2026-08-15-add-input-limits.sql.
+maxLength={500}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
 />
@@ -418,6 +483,9 @@ type="text"
 value={contactValue.name}
 onChange={(e) => setContactField('name', e.target.value)}
 placeholder="Full name"
+// Matches jobs_customer_name_length / _phone_length / _email_length
+// in docs/migrations/2026-08-15-add-input-limits.sql.
+maxLength={200}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
 />
@@ -426,6 +494,7 @@ type="tel"
 value={contactValue.phone}
 onChange={(e) => setContactField('phone', e.target.value)}
 placeholder="Phone number"
+maxLength={30}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
 />
@@ -434,6 +503,7 @@ type="email"
 value={contactValue.email}
 onChange={(e) => setContactField('email', e.target.value)}
 placeholder="Email (optional)"
+maxLength={320}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
 className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
 />
@@ -512,6 +582,12 @@ className="rounded-full p-1"
 </div>
 ))}
 </div>
+)}
+{mediaError && (
+<p style={{ color: '#E0A840', backgroundColor: '#241C0A', border: '1px solid #3A2F0E' }}
+className="text-xs rounded-md px-3 py-2.5 mt-3">
+{mediaError}
+</p>
 )}
 <p style={{ color: '#9A9A9A' }} className="text-xs mt-3">Optional, but the plumber will thank you.</p>
 </div>
