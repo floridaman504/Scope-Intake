@@ -86,7 +86,15 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        // Switched from claude-sonnet-5 to claude-haiku-4-5 (2026-08-15)
+        // after a 12-case head-to-head comparison
+        // (scripts/compare-review-job-models.mjs) showed matching urgency
+        // calls on every case, including the two safety-critical ones
+        // (a gas-smell report and a sewage backup) -- while running
+        // roughly 3x cheaper and 1.5-2s faster per call. Revert this one
+        // line back to 'claude-sonnet-5' if real customer submissions ever
+        // show it producing a visibly worse brief.
+        model: 'claude-haiku-4-5',
         max_tokens: 1000,
         messages: [{ role: 'user', content: prompt }],
       }),
