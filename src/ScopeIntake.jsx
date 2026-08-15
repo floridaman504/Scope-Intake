@@ -97,6 +97,13 @@ const [loading, setLoading] = useState(false);
 // is never told every attachment made it through when one silently didn't.
 // The job save itself is never blocked by a media failure.
 const [mediaUploadFailures, setMediaUploadFailures] = useState(0);
+// True only when the job itself never reached the database (submit_public_job
+// or attach_job_media threw). Distinct from mediaUploadFailures, which is a
+// non-fatal partial failure the job save survives -- this one means the
+// customer's request was never actually logged, so ResultScreen must not
+// show the "ready for dispatch" brief when it's true. See handleSubmit's
+// comment on why this used to fail silently.
+const [submitFailed, setSubmitFailed] = useState(false);
 const fileInputRef = useRef(null);
 
 const current = STEPS[step];
@@ -143,48 +150,16 @@ setMedia((m) => [...m, ...mapped]);
 
 const removeMedia = (idx) => setMedia((m) => m.filter((_, i) => i !== idx));
 
-const handleSubmit = async () => {
-setSubmitted(true);
-setLoading(true);
-
-// AI brief generation and job persistence are deliberately decoupled
-// below: the AI call can fail for reasons that have nothing to do with
-// this customer (Anthropic outage, or -- now that the cost guardrail
-// is wired in -- a rate limit tripped by someone else entirely). None
-// of that should cost this customer their submission. A worse AI brief
-// is a UX downgrade; a lost job is a lost lead. So: always try to save
-// the job, using the real brief if we got one and a clearly-labeled
-// fallback if we didn't.
-let brief;
-try {
-const summary = STEPS.map((s) => {
-if (s.id === 'contact') return null; // contact info isn't part of the job-type summary
-return `${s.title}: ${answers[s.id] || 'Not provided'}`;
-}).filter(Boolean).join('\n');
-
-const response = await fetch('/api/review-job', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({
-summary,
-mediaCount: media.length,
-mediaTypes: media.map((m) => m.type).join(', ') || 'none',
-subdomain: COMPANY_SUBDOMAIN,
-}),
-});
-const parsed = await response.json();
-if (parsed.error) throw new Error(parsed.error);
-brief = parsed;
-} catch (err) {
-brief = {
-jobType: 'Unable to generate brief',
-urgency: 'Unknown',
-likelyMaterials: [],
-briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
-watchOutFor: '--',
-};
-}
-setAiBrief(brief);
+// Saves the job (+ uploads attachments) using an already-computed brief.
+// Split out from handleSubmit so a retry after a failed save (see below)
+// can re-run just this part -- retrying the whole handleSubmit would
+// re-call /api/review-job for a brief we already have, burning an extra
+// AI call (and extra spend against the cost guardrail) for no reason.
+const saveJob = async (brief) => {
+// Reset here (not just in handleSubmit) so a retry after a failure
+// clears the failed state as soon as a new attempt starts, regardless
+// of which caller (handleSubmit or retrySave) invoked this.
+setSubmitFailed(false);
 
 // Save the full job (customer answers + whichever brief we ended up
 // with) via the submit_public_job() RPC rather than a direct table
@@ -200,7 +175,11 @@ setAiBrief(brief);
 // every visitor) could insert jobs into ANY company's queue with the
 // public anon key, bypassing this form and the AI cost guardrail
 // entirely. See docs/audits/2026-08-11-public-job-insert-tenant-binding-fix.md.
-// If this fails, we don't block the customer -- they've done their part.
+// If this fails, we don't show a scary full-page error or make the
+// customer retype anything -- but we do tell them, via submitFailed below,
+// because the alternative (silently discarding a real customer's plumbing
+// emergency while they believe help is on the way) is worse than a UX
+// downgrade. See ResultScreen's submitFailed branch.
 //
 // p_media is [] here on purpose, not media metadata -- there's no job id
 // yet to scope a storage path to. Real files are uploaded to Supabase
@@ -279,17 +258,84 @@ failedUploads = media.length;
 }
 }
 } catch (dbErr) {
-// Saving failed silently for the customer; logged for us.
+// The job never reached the database -- this is a lost lead, not a
+// cosmetic failure, so it has to reach the customer somehow.
+// setSubmitFailed(true) is that "somehow": ResultScreen shows a plain
+// "we couldn't save your request, try again" state instead of the AI
+// brief, which would otherwise be actively misleading (a fully-formed
+// "ready for dispatch" screen for a job nobody at the company can see).
 console.error('Could not save job to database:', dbErr);
+setSubmitFailed(true);
 } finally {
 setMediaUploadFailures(failedUploads);
 setLoading(false);
 }
 };
 
+const handleSubmit = async () => {
+setSubmitted(true);
+setLoading(true);
+
+// AI brief generation and job persistence are deliberately decoupled:
+// the AI call can fail for reasons that have nothing to do with this
+// customer (Anthropic outage, or -- now that the cost guardrail is
+// wired in -- a rate limit tripped by someone else entirely). None of
+// that should cost this customer their submission. A worse AI brief is
+// a UX downgrade; a lost job is a lost lead. So: always try to save the
+// job, using the real brief if we got one and a clearly-labeled
+// fallback if we didn't.
+let brief;
+try {
+const summary = STEPS.map((s) => {
+if (s.id === 'contact') return null; // contact info isn't part of the job-type summary
+return `${s.title}: ${answers[s.id] || 'Not provided'}`;
+}).filter(Boolean).join('\n');
+
+const response = await fetch('/api/review-job', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({
+summary,
+mediaCount: media.length,
+mediaTypes: media.map((m) => m.type).join(', ') || 'none',
+subdomain: COMPANY_SUBDOMAIN,
+}),
+});
+const parsed = await response.json();
+if (parsed.error) throw new Error(parsed.error);
+brief = parsed;
+} catch (err) {
+brief = {
+jobType: 'Unable to generate brief',
+urgency: 'Unknown',
+likelyMaterials: [],
+briefSummary: 'Something went wrong generating the AI summary. The raw answers below are still complete and usable.',
+watchOutFor: '--',
+};
+}
+setAiBrief(brief);
+await saveJob(brief);
+};
+
+// Retry after a failed save, reusing the brief already computed on the
+// first attempt (aiBrief) instead of calling /api/review-job again --
+// see saveJob's header comment for why.
+const retrySave = async () => {
+setLoading(true);
+await saveJob(aiBrief);
+};
+
 if (submitted) {
-return <ResultScreen loading={loading} brief={aiBrief} answers={answers} media={media} mediaUploadFailures={mediaUploadFailures} onReset={() => {
-setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null); setMediaUploadFailures(0);
+return <ResultScreen
+loading={loading}
+brief={aiBrief}
+answers={answers}
+media={media}
+mediaUploadFailures={mediaUploadFailures}
+submitFailed={submitFailed}
+onRetry={retrySave}
+onReset={() => {
+setSubmitted(false); setStep(0); setAnswers({}); setMedia([]); setAiBrief(null); setMediaUploadFailures(0); setSubmitFailed(false);
 }} />;
 }
 
@@ -513,7 +559,7 @@ to { opacity: 1; transform: translateY(0); }
 );
 }
 
-function ResultScreen({ loading, brief, answers, media, mediaUploadFailures, onReset }) {
+function ResultScreen({ loading, brief, answers, media, mediaUploadFailures, submitFailed, onRetry, onReset }) {
 return (
 <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }} className="font-sans">
 <header style={{ borderBottom: '1px solid #2A2A2A' }} className="flex items-center justify-between px-6 py-5">
@@ -528,6 +574,39 @@ return (
 <div className="flex flex-col items-center gap-4 py-20">
 <div style={{ border: '2px solid #2E2E2E', borderTopColor: '#C9A227' }} className="w-10 h-10 rounded-full animate-spin" />
 <p style={{ color: '#C4C4C4' }} className="text-sm">Reviewing the job submission...</p>
+</div>
+) : submitFailed ? (
+// The job never reached the database -- showing the "ready for
+// dispatch" brief here would tell the customer their emergency is
+// being handled when nobody at the company can see it. Keep this
+// screen honest instead: say plainly that it didn't go through, and
+// give them a one-click retry that reuses the brief already computed
+// (no retyping, no second AI call) plus the RESULT of a real fix,
+// not just an apology.
+<div className="py-10">
+<div style={{ color: '#E07A6E' }} className="text-xs tracking-[0.2em] mb-2 font-medium">REQUEST NOT SAVED</div>
+<h1 style={{ fontFamily: 'Oswald, sans-serif', color: '#FFFFFF' }} className="text-2xl font-bold mb-4">
+We couldn't save your request
+</h1>
+<p style={{ color: '#D8D8D8' }} className="text-[15px] leading-relaxed mb-6">
+Something went wrong on our end and your job request wasn't sent to us --
+it hasn't been lost, but it also hasn't reached anyone yet. Nothing you
+typed is gone; tap below to try again.
+</p>
+<button
+onClick={onRetry}
+style={{ backgroundColor: '#C9A227', color: '#0A0A0A' }}
+className="w-full py-3 rounded-md text-sm font-semibold transition-colors mb-3"
+>
+Try again
+</button>
+<button
+onClick={onReset}
+style={{ border: '1px solid #2E2E2E', color: '#C8C8C8', backgroundColor: 'transparent' }}
+className="w-full py-3 rounded-md text-sm transition-colors"
+>
+Start over instead
+</button>
 </div>
 ) : (
 <>
