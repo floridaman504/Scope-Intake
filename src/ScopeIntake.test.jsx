@@ -6,7 +6,7 @@
 // regression back to that state. Network (fetch to /api/review-job) and
 // Supabase (rpc + storage) are fully mocked; no request leaves the process.
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ScopeIntake from './ScopeIntake.jsx';
@@ -200,5 +200,125 @@ describe('ScopeIntake submission failure + retry', () => {
 
     expect(screen.getByText(/step 1 of/i)).toBeInTheDocument();
     expect(screen.queryByText(/couldn't save your request/i)).not.toBeInTheDocument();
+  });
+});
+
+// Client-side input limits (Tier 2 #9, docs/scope-operational-playbook.md).
+// These mirror the server-side/DB limits (api/review-job.js,
+// docs/migrations/2026-08-15-add-input-limits.sql) so a customer gets a
+// clear, friendly message at the moment they type too much or pick a bad
+// file, instead of a rejection deep inside a later network call.
+function makeFileOfSize(name, type, sizeBytes) {
+  const file = new File(['x'], name, { type });
+  // File's real size is derived from its content; overriding the `size`
+  // getter is the standard jsdom-safe way to simulate a large file without
+  // actually allocating that many bytes in the test.
+  Object.defineProperty(file, 'size', { value: sizeBytes });
+  return file;
+}
+
+async function goToMediaStep(user) {
+  await user.type(document.querySelector('textarea'), 'Water pooling under the sink');
+  await user.click(screen.getByRole('button', { name: /next/i }));
+  const [nameInput, phoneInput] = document.querySelectorAll('input[type="text"], input[type="tel"]');
+  await user.type(nameInput, 'Jamie Customer');
+  await user.type(phoneInput, '5551234567');
+  await user.click(screen.getByRole('button', { name: /next/i }));
+}
+
+describe('ScopeIntake client-side input limits', () => {
+  it('enforces maxLength on the context/access textareas and contact fields', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+
+    expect(document.querySelector('textarea')).toHaveAttribute('maxLength', '2000');
+
+    await goToMediaStep(user);
+    await user.click(screen.getByRole('button', { name: /next/i })); // past media, to fixture
+    const fixtureInput = document.querySelector('input[type="text"]');
+    expect(fixtureInput).toHaveAttribute('maxLength', '500'); // fixture
+    await user.type(fixtureInput, 'Moen'); // required to enable Next
+    await user.click(screen.getByRole('button', { name: /next/i })); // past fixture, to pipe
+    await user.click(screen.getByRole('button', { name: 'Copper' }));
+    await user.click(screen.getByRole('button', { name: /next/i })); // to access
+    expect(document.querySelector('textarea')).toHaveAttribute('maxLength', '2000'); // access
+  });
+
+  it('has maxLength set on the contact name/phone/email inputs', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+    await user.type(document.querySelector('textarea'), 'Water pooling under the sink');
+    await user.click(screen.getByRole('button', { name: /next/i }));
+
+    const [nameInput, phoneInput, emailInput] = document.querySelectorAll(
+      'input[type="text"], input[type="tel"], input[type="email"]'
+    );
+    expect(nameInput).toHaveAttribute('maxLength', '200');
+    expect(phoneInput).toHaveAttribute('maxLength', '30');
+    expect(emailInput).toHaveAttribute('maxLength', '320');
+  });
+
+  it('rejects an oversized file with a friendly inline message and does not attach it', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+    await goToMediaStep(user);
+
+    const bigFile = makeFileOfSize('huge.jpg', 'image/jpeg', 26 * 1024 * 1024);
+    const fileInput = document.querySelector('input[type="file"]');
+    await user.upload(fileInput, bigFile);
+
+    expect(await screen.findByText(/over the 25 MB limit/i)).toBeInTheDocument();
+    // Not added to the attachment preview grid.
+    expect(screen.queryByAltText(/uploaded photo/i)).not.toBeInTheDocument();
+  });
+
+  it('rejects an unsupported file type with a friendly inline message', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+    await goToMediaStep(user);
+
+    // The file input's `accept="image/*,video/*"` already steers a real OS
+    // picker away from non-media files (and user-event's own upload()
+    // enforces that same filter, so it can't be used to simulate this
+    // case) -- but `accept` is only ever a UI hint, not a guarantee (some
+    // mobile pickers and all drag-and-drop ignore it), so handleFile has
+    // to check the actual file type itself. Firing the change event
+    // directly bypasses user-event's accept filtering to exercise exactly
+    // that server-can't-trust-the-picker path.
+    const badFile = new File(['not-a-photo'], 'notes.txt', { type: 'text/plain' });
+    const fileInput = document.querySelector('input[type="file"]');
+    Object.defineProperty(fileInput, 'files', { value: [badFile], configurable: true });
+    fireEvent.change(fileInput);
+
+    expect(await screen.findByText(/supported photo\/video type/i)).toBeInTheDocument();
+  });
+
+  it('caps total attachments at 8 and tells the customer how many were skipped', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+    await goToMediaStep(user);
+
+    const fileInput = document.querySelector('input[type="file"]');
+    const nineFiles = Array.from({ length: 9 }, (_, i) =>
+      new File(['x'], `photo${i}.jpg`, { type: 'image/jpeg' })
+    );
+    await user.upload(fileInput, nineFiles);
+
+    expect(await screen.findByText(/only 8 attachments are allowed/i)).toBeInTheDocument();
+    expect(screen.getAllByAltText(/uploaded photo/i)).toHaveLength(8);
+  });
+
+  it('accepts a good file with no error message shown', async () => {
+    const user = userEvent.setup();
+    render(<ScopeIntake />);
+    await goToMediaStep(user);
+
+    const goodFile = new File(['fake-image-bytes'], 'leak.jpg', { type: 'image/jpeg' });
+    const fileInput = document.querySelector('input[type="file"]');
+    await user.upload(fileInput, goodFile);
+
+    expect(await screen.findByAltText(/uploaded photo 1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/25 MB limit/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/supported photo\/video type/i)).not.toBeInTheDocument();
   });
 });
