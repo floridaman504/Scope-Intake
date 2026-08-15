@@ -19,7 +19,23 @@
 -- enumeration angle by revoking anon access to the two lookup RPCs.
 --
 -- Applied directly against production via the Supabase SQL editor on
--- 2026-08-11.
+-- 2026-08-11, as an emergency fix for a live cross-tenant vulnerability --
+-- ahead of the normal staging-first flow docs/audits/2026-08-08-migration-
+-- safety-playbook.md otherwise requires.
+--
+-- INTENTIONALLY NO ROLLBACK FILE. The playbook's Part 2 rule is "every
+-- migration ships its rollback, written first," and says explicitly: "If
+-- you can't write that rollback ... that's the migration telling you it
+-- isn't ready." This is the case the playbook is describing -- the literal
+-- inverse of this migration (re-adding jobs_insert_public, re-granting
+-- anon/PUBLIC execute on get_company_by_subdomain()/company_exists(), and
+-- reverting submit_public_job() to its old p_pets signature) would reopen
+-- the exact tenant-isolation hole this migration exists to close. There is
+-- no safe rollback for a fix whose entire purpose is removing an
+-- unsafe capability. If this migration is ever found to be wrong, the
+-- correct move is a new forward-fix migration -- not a revert to this
+-- one's pre-state -- documented and reviewed with the same or greater
+-- care as the original fix, not a mechanical undo.
 
 -- 1. Drop the old signature (p_pets text) and recreate with p_media jsonb.
 drop function if exists public.submit_public_job(text,text,text,text,text,text,text,text,text,text,text,text,text,text,text[],text,text);
