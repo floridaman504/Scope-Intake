@@ -50,7 +50,6 @@ export function AuthProvider({ children }) {
   const lastActivityAtRef = useRef(Date.now());
   const lastServerTouchRef = useRef(0);
   const locationRef = useRef(location);
-  const formSnapshotGetterRef = useRef(null);
 
   useEffect(() => { locationRef.current = location; }, [location]);
 
@@ -147,7 +146,6 @@ export function AuthProvider({ children }) {
         path: locationRef.current.pathname + locationRef.current.search,
         savedAt: Date.now(),
         reason,
-        formData: formSnapshotGetterRef.current ? formSnapshotGetterRef.current() : null,
       };
       sessionStorage.setItem(RESTORE_SNAPSHOT_KEY, JSON.stringify(snapshot));
     } catch (e) {
@@ -400,9 +398,9 @@ export function AuthProvider({ children }) {
     return data;
   }, [session]);
 
-  // Ready for a future "change password" UI -- none exists in the app yet.
-  // Revokes every session (including this one) so the new password is
-  // required everywhere, then signs this device out too.
+  // Used by ResetPassword.jsx's confirm-new-password step. Revokes every
+  // session (including this one) so the new password is required
+  // everywhere, then signs this device out too.
   const changePasswordAndSignOutEverywhere = useCallback(async (newPassword) => {
     const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
     if (updateErr) throw updateErr;
@@ -413,16 +411,6 @@ export function AuthProvider({ children }) {
     }
     await signOut();
   }, [signOut]);
-
-  // Lets a page opt into having its in-progress form data included in the
-  // pre-expiry/pre-logout snapshot so it can be restored after re-auth.
-  // No current authenticated page has a form worth snapshotting (Dashboard
-  // is a stub), so nothing calls this yet -- it's here so the next form
-  // that's added behind ProtectedRoute can use it in one line.
-  const registerFormSnapshot = useCallback((getterFn) => {
-    formSnapshotGetterRef.current = getterFn;
-    return () => { formSnapshotGetterRef.current = null; };
-  }, []);
 
   // Called by Login.jsx after a successful sign-in to find out whether to
   // redirect to /dashboard (default) or back to where the user was.
@@ -451,7 +439,6 @@ export function AuthProvider({ children }) {
         sessionId,
         sessionWarning,
         extendSession,
-        registerFormSnapshot,
         consumeRestoreSnapshot,
       }}
     >
