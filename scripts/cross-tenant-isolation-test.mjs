@@ -314,19 +314,70 @@ async function main() {
   // ---- Act + Assert, as anon (public intake form) ----
   await asRole('anon', null);
 
-  await client.query(
-    `insert into jobs (id, company_id, customer_name, context) values ($1, $2, 'CI Anon Job', 'citest-anon')`,
-    ['00000000-1a00-0000-0000-00000000a0aa', IDS.companyA]
+  // The 2026-08-11 tenant-binding fix
+  // (docs/migrations/2026-08-11-fix-public-job-insert-tenant-binding.sql)
+  // dropped jobs_insert_public and moved every public submission through
+  // submit_public_job() -- a SECURITY DEFINER RPC that resolves company_id
+  // itself from the subdomain, so anon no longer has (and shouldn't have) a
+  // path to name company_id directly. This block used to be a raw
+  // `insert into jobs (...)` -- that stopped matching reality the moment
+  // the fix migration shipped (a raw anon INSERT is now rejected by RLS,
+  // see the new assertion below) and this test was never updated to catch
+  // up. Calling the real RPC -- the same one the public intake form itself
+  // calls -- is what "public intake form path" is actually supposed to
+  // prove here.
+  const submitted = await client.query(
+    `select * from submit_public_job($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+    [
+      'citest-a-ci', // p_subdomain
+      'CI Anon Job', // p_customer_name
+      '5551234567', // p_customer_phone
+      'anon@citest.local', // p_customer_email
+      'citest-anon', // p_context
+      null, // p_fixture
+      null, // p_pipe
+      null, // p_access
+      null, // p_cutting
+      null, // p_preference
+      null, // p_leak_detection
+      JSON.stringify([]), // p_media (jsonb)
+      null, // p_ai_job_type
+      null, // p_ai_urgency
+      null, // p_ai_materials (text[])
+      null, // p_ai_summary
+      null, // p_ai_watch_out
+    ]
   );
+  const anonJob = submitted.rows[0];
+  check(
+    "anon submit_public_job('citest-a-ci', ...) creates a job bound to company A (public intake form path)",
+    anonJob?.company_id,
+    IDS.companyA
+  );
+
+  // Guards against ever regressing back to the pre-8/11 vulnerable state:
+  // anon must NOT be able to name company_id directly via a raw INSERT
+  // anymore, even though anon still holds a table-level INSERT grant on
+  // jobs (see sync-staging.yml's grant list) -- RLS itself, not the grant,
+  // has to be what blocks this now that jobs_insert_public is gone.
+  check(
+    'anon raw INSERT into jobs is rejected now that jobs_insert_public is gone (guards against regressing the 2026-08-11 fix)',
+    await expectDenied(
+      `insert into jobs (id, company_id, customer_name, context) values ($1, $2, 'CI Anon Direct Insert', 'citest-anon-direct')`,
+      ['00000000-1a00-0000-0000-00000000a0ab', IDS.companyA]
+    ),
+    true
+  );
+
   // Same reasoning as the DELETE/UPDATE verifications above: anon has no
-  // SELECT grant on jobs at all, not even for the row it just inserted
-  // itself, so verifying the INSERT actually landed has to go through the
-  // privileged postgres role -- then switch back to anon to check that
-  // anon really can't read it back either.
+  // SELECT grant on jobs at all, not even for the row it just created via
+  // submit_public_job(), so verifying that row actually landed has to go
+  // through the privileged postgres role -- then switch back to anon to
+  // check that anon really can't read it back either.
   await asPostgres();
   check(
-    'anon INSERT into jobs for a real company succeeds (public intake form path)',
-    await scalar(`select count(*) from jobs where id = '00000000-1a00-0000-0000-00000000a0aa'`),
+    'submit_public_job() row actually landed in jobs (company A, citest-anon context)',
+    await scalar(`select count(*) from jobs where company_id = $1 and context = 'citest-anon'`, [IDS.companyA]),
     '1'
   );
   await asRole('anon', null);
