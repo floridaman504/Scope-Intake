@@ -1,0 +1,60 @@
+name: Session hardening test
+
+# Coverage gap found in the 2026-08-13 re-audit of
+# docs/audits/2026-08-06-session-auth-hardening.md: supabase_session_
+# hardening.sql (register_session/touch_session/revoke_session/
+# sign_out_everywhere, the concurrent-session cap, and the sliding
+# inactivity timeout) was confirmed live in production and holding real
+# session data, but nothing in CI ever exercised it -- unlike the
+# cross-tenant isolation gap, which got an automated behavioral test back
+# on 2026-08-09 (see cross-tenant-isolation-test.yml), this one never did.
+#
+# Same model as that workflow: runs against scope-staging ONLY (never
+# given the production secret), everything happens inside one
+# BEGIN...ROLLBACK transaction so staging is never left with residual
+# test rows, and it exercises the REAL RLS policies + REAL SECURITY
+# DEFINER function bodies via SET LOCAL ROLE / request.jwt.claim.sub --
+# not a mock of them. See scripts/session-hardening-test.mjs for exactly
+# what's proven.
+#
+# Runs on every push so a policy or function change that weakens session
+# hardening gets caught immediately, not just on the next manual
+# click-through of /sessions.
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  session-hardening:
+    name: Session hardening (scope-staging)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Verify STAGING_DB_URL is configured
+        run: |
+          if [ -z "${STAGING_DB_URL}" ]; then
+            echo "::error::Missing STAGING_DB_URL secret -- cannot run against scope-staging."
+            exit 1
+          fi
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+
+      - name: Run session hardening test
+        run: npm run test:session-hardening
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}

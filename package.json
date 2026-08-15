@@ -13,7 +13,8 @@
     "test:unit": "vitest run --exclude \"**/test/integration/**\"",
     "test:integration": "vitest run src/test/integration",
     "test:coverage": "vitest run --coverage",
-    "test:cross-tenant": "node scripts/cross-tenant-isolation-test.mjs"
+    "test:cross-tenant": "node scripts/cross-tenant-isolation-test.mjs",
+    "test:session-hardening": "node scripts/session-hardening-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
