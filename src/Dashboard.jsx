@@ -109,6 +109,15 @@ export default function Dashboard() {
             Audit log
           </Link>
         )}
+        {employee?.role === 'owner' && (
+          <Link
+            to="/error-log"
+            style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
+            className="text-sm px-4 py-2 rounded-md"
+          >
+            Error log
+          </Link>
+        )}
         <button
           onClick={signOut}
           style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}

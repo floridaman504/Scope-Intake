@@ -3,6 +3,16 @@ import React from 'react';
 // Catches rendering errors anywhere below it in the component tree and
 // shows a recovery screen instead of a blank white page. Logs the error
 // for us; the person just sees a friendly reload prompt.
+//
+// Sits at the very top of the tree, above the router (see src/main.jsx) --
+// that's the full boundary-coverage answer for React render errors
+// specifically: there is no page in this app a render error can happen on
+// without this catching it. componentDidCatch also writes to the durable
+// error_log table (Tier 2 #10, docs/migrations/2026-08-16-error-log-pipeline.sql)
+// the same way src/errorMessages.js's logSafeError does, for the same
+// reason: before this, a render error crashing an entire page was only
+// ever visible in a console nobody comes back to look at. See that file
+// for why the import is dynamic and the call isn't awaited.
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -15,6 +25,18 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error('[ErrorBoundary] Unhandled error:', error, info);
+    import('./supabaseClient.js')
+      .then(({ supabase }) =>
+        supabase.rpc('log_app_error', {
+          p_severity: 'error',
+          p_source: 'client:ErrorBoundary',
+          p_route: typeof window !== 'undefined' ? window.location.pathname : null,
+          p_http_method: null,
+          p_message: 'Something Went Wrong',
+          p_detail: `${error?.stack || error?.message || String(error)}\n\n${info?.componentStack || ''}`,
+        })
+      )
+      .catch(() => {});
   }
 
   render() {
