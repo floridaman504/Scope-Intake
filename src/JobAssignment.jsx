@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from './supabaseClient.js';
 import { colors } from './theme.js';
+import { logSafeError } from './errorMessages.js';
 
 // Multi-assignee control for a single job. Plumbing work is often done in
 // pairs/crews ("buddy work"), so a job can have more than one assignee --
@@ -53,7 +54,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
       .insert({ job_id: job.id, employee_id: selectedId });
     if (insertErr) {
       setBusyId(null);
-      setError(insertErr.message);
+      setError(logSafeError('Could not add assignee:', insertErr, 'Could not add that person to the job. Please try again.'));
       return;
     }
     // First assignee on a brand-new job also nudges status out of "new",
@@ -80,7 +81,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
       .eq('employee_id', employeeId);
     setBusyId(null);
     if (deleteErr) {
-      setError(deleteErr.message);
+      setError(logSafeError('Could not remove assignee:', deleteErr, 'Could not remove that person from the job. Please try again.'));
       return;
     }
     // If that was the last assignee and the job was auto-advanced to

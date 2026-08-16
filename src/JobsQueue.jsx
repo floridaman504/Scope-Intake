@@ -5,6 +5,7 @@ import { useAuth } from './AuthContext.jsx';
 import { colors, fontHead, STATUS_LABELS, STATUS_ORDER } from './theme.js';
 import JobAssignment, { AssigneeBadge } from './JobAssignment.jsx';
 import JobNotes from './JobNotes.jsx';
+import { logSafeError } from './errorMessages.js';
 
 // A job is inside its "claim window" for the first hour after it's
 // created. After that, if it's still unclaimed, the missed-lead
@@ -147,7 +148,7 @@ export default function JobsQueue() {
       .order('created_at', { ascending: false });
 
     if (jobErr) {
-      setError('Could not load jobs: ' + jobErr.message);
+      setError(logSafeError('Could not load jobs:', jobErr, 'Could not load jobs. Please try again.'));
       setLoading(false);
       return;
     }
@@ -168,7 +169,7 @@ export default function JobsQueue() {
       .select('job_id, employee_id, assigned_at')
       .order('assigned_at', { ascending: true });
     if (assigneeErr) {
-      setError('Could not load assignments: ' + assigneeErr.message);
+      setError(logSafeError('Could not load assignments:', assigneeErr, 'Could not load assignments. Please try again.'));
       setLoading(false);
       return;
     }
@@ -278,7 +279,7 @@ export default function JobsQueue() {
       .update({ status: newStatus })
       .eq('id', jobId);
     if (updateErr) {
-      setError('Could not update status: ' + updateErr.message);
+      setError(logSafeError('Could not update status:', updateErr, 'Could not update status. Please try again.'));
       return;
     }
     await load();
@@ -295,7 +296,7 @@ export default function JobsQueue() {
       .update({ [field]: fromDatetimeLocalValue(localValue) })
       .eq('id', jobId);
     if (updateErr) {
-      setError('Could not update schedule: ' + updateErr.message);
+      setError(logSafeError('Could not update schedule:', updateErr, 'Could not update schedule. Please try again.'));
       return;
     }
     await load();
@@ -315,7 +316,7 @@ export default function JobsQueue() {
     }
     const { error: rpcErr } = await supabase.rpc('set_job_duration', { p_job_id: jobId, p_minutes: minutes });
     if (rpcErr) {
-      setError('Could not update duration: ' + rpcErr.message);
+      setError(logSafeError('Could not update duration:', rpcErr, 'Could not update duration. Please try again.'));
       return;
     }
     await load();
@@ -342,7 +343,7 @@ export default function JobsQueue() {
     .eq('id', job.id);
     setDeletingId(null);
     if (deleteErr) {
-      setError('Could not delete job: ' + deleteErr.message);
+      setError(logSafeError('Could not delete job:', deleteErr, 'Could not delete job. Please try again.'));
       return;
     }
     if (expandedId === job.id) setExpandedId(null);

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from './supabaseClient.js';
 import { colors } from './theme.js';
+import { logSafeError } from './errorMessages.js';
 
 // Append-only notes thread for a job.
 //
@@ -37,7 +38,7 @@ export default function JobNotes({ jobId, employee, employeesById }) {
       .eq('job_id', jobId)
       .order('created_at', { ascending: true });
     if (loadErr) {
-      setError('Could not load notes: ' + loadErr.message);
+      setError(logSafeError('Could not load notes:', loadErr, 'Could not load notes. Please try again.'));
     } else {
       setNotes(data || []);
     }
@@ -126,7 +127,7 @@ export default function JobNotes({ jobId, employee, employeesById }) {
     });
     setPosting(false);
     if (insertErr) {
-      setError('Could not post note: ' + insertErr.message);
+      setError(logSafeError('Could not post note:', insertErr, 'Could not post note. Please try again.'));
       return;
     }
     setDraft('');

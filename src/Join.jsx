@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
 import { recordActivity } from './activityTracking.js';
+import { logSafeError } from './errorMessages.js';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function Join() {
@@ -29,7 +30,7 @@ export default function Join() {
         password,
       });
       if (signUpErr) {
-        setError(signUpErr.message);
+        setError(logSafeError('Sign-up failed:', signUpErr, 'Could not create your account. Please try again.'));
         setLoading(false);
         return;
       }
@@ -54,7 +55,7 @@ export default function Join() {
       });
 
       if (redeemErr) {
-        setError(redeemErr.message || 'That invite code is invalid or already used.');
+        setError(logSafeError('Invite code redemption failed:', redeemErr, 'That invite code is invalid or already used.'));
         setLoading(false);
         return;
       }
