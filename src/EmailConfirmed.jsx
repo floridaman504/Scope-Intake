@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
 import { recordActivity } from './activityTracking.js';
+import { logSafeError } from './errorMessages.js';
 import { useAuth } from './AuthContext.jsx';
 
 // Landing page for the link in Supabase's signup-confirmation email.
@@ -53,7 +54,7 @@ export default function EmailConfirmed() {
         employee_email: session.user.email,
       });
       if (redeemErr) {
-        setError(redeemErr.message || 'That invite code is invalid or already used.');
+        setError(logSafeError('Invite code redemption failed:', redeemErr, 'That invite code is invalid or already used.'));
         setSubmitting(false);
         return;
       }

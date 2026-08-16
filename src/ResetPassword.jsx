@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from './AuthContext.jsx';
+import { logSafeError } from './errorMessages.js';
 
 // Landing page for the link in the password-reset email. Supabase's client
 // (detectSessionInUrl: true, set in supabaseClient.js) parses the
@@ -38,7 +39,7 @@ export default function ResetPassword() {
       setDone(true);
       setTimeout(() => navigate('/login'), 2500);
     } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(logSafeError('Password reset failed:', err, 'Something went wrong. Please try again.'));
       setLoading(false);
     }
   };

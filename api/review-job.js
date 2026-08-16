@@ -2,6 +2,7 @@
 // Your API key stays private here and is never visible to anyone using the site.
 
 import { createClient } from '@supabase/supabase-js';
+import { sendSafeError } from './_lib/errorResponse.js';
 
 // Server-side Supabase client using the anon key -- same key the browser
 // uses. check_rate_limit() and log_ai_usage() are SECURITY DEFINER
@@ -141,7 +142,9 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
     const data = await response.json();
 
     if (data.error) {
-      return res.status(500).json({ error: data.error.message });
+      // Raw Anthropic error text (model/rate-limit internals) must not
+      // reach the client -- see api/_lib/errorResponse.js.
+      return sendSafeError(res, 500, data.error, 'The AI service is temporarily unavailable. Please try again.');
     }
 
     // Log actual token usage regardless of what happens next -- this is
@@ -165,6 +168,9 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
 
     return res.status(200).json(parsed);
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    // Catch-all: could be a raw Supabase/Postgres error, a JSON.parse
+    // failure, or any other internal exception -- none of it belongs in a
+    // public response body. See api/_lib/errorResponse.js.
+    return sendSafeError(res, 500, err, 'Something went wrong processing your request. Please try again.');
   }
 }

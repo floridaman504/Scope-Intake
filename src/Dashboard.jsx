@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from './AuthContext.jsx';
 import { supabase } from './supabaseClient.js';
+import { logSafeError } from './errorMessages.js';
 
 export default function Dashboard() {
   const { employee, signOut, signOutEverywhere } = useAuth();
@@ -45,7 +46,7 @@ export default function Dashboard() {
       await signOutEverywhere();
       setEverywhereMsg('All your other sessions have been signed out. This device will sign out shortly too.');
     } catch (e) {
-      setEverywhereMsg('Could not sign out other sessions: ' + (e.message || 'unknown error'));
+      setEverywhereMsg(logSafeError('Sign-out-everywhere failed:', e, 'Could not sign out other sessions. Please try again.'));
     } finally {
       setEverywhereBusy(false);
     }

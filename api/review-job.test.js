@@ -202,7 +202,10 @@ describe('review-job handler', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns 500 with the Anthropic error message when the AI call errors', async () => {
+  it('returns 500 with a safe generic message (not the raw Anthropic error) when the AI call errors', async () => {
+    // Regression guard for the error-handling audit (docs/audits/2026-08-16-error-handling.md):
+    // this endpoint used to return the raw upstream error message verbatim,
+    // in the response body of a public unauthenticated endpoint.
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
       ok: true,
       json: async () => ({ error: { message: 'overloaded_error' } }),
@@ -210,7 +213,18 @@ describe('review-job handler', () => {
     const res = makeRes();
     await handler(makeReq({ summary: 'Leak under sink' }), res);
     expect(res.statusCode).toBe(500);
-    expect(res.body.error).toBe('overloaded_error');
+    expect(res.body.error).toBe('The AI service is temporarily unavailable. Please try again.');
+    expect(res.body.error).not.toBe('overloaded_error');
+    vi.unstubAllGlobals();
+  });
+
+  it('returns 500 with a safe generic message (not the raw error) when the handler throws unexpectedly', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('ECONNRESET'))));
+    const res = makeRes();
+    await handler(makeReq({ summary: 'Leak under sink' }), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body.error).toBe('Something went wrong processing your request. Please try again.');
+    expect(res.body.error).not.toContain('ECONNRESET');
     vi.unstubAllGlobals();
   });
 });

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
+import { logSafeError } from './errorMessages.js';
 
 // Owner-visible session registry: every active/recent session for every
 // employee in the Owner's own company (RLS on user_sessions restricts the
@@ -31,7 +32,7 @@ export default function SessionRegistry() {
       .order('last_activity_at', { ascending: false });
 
     if (sessionErr) {
-      setError('Could not load sessions: ' + sessionErr.message);
+      setError(logSafeError('Could not load sessions:', sessionErr, 'Could not load sessions. Please try again.'));
       setLoading(false);
       return;
     }

@@ -86,7 +86,9 @@ describe('Join (signup + invite code redemption)', () => {
     }));
   });
 
-  it('shows an error and does not redeem an invite code if signUp itself fails', async () => {
+  it('shows a safe generic error (not the raw Supabase message) and does not redeem an invite code if signUp itself fails', async () => {
+    // Regression guard for the error-handling audit (docs/audits/2026-08-16-error-handling.md):
+    // the raw error.message must never reach the UI, even though it's shown here.
     const user = userEvent.setup();
     mockSupabase.auth.signUp.mockResolvedValue({
       data: {},
@@ -96,7 +98,8 @@ describe('Join (signup + invite code redemption)', () => {
 
     await fillJoinForm(user);
 
-    expect(await screen.findByText('User already registered')).toBeInTheDocument();
+    expect(await screen.findByText('Could not create your account. Please try again.')).toBeInTheDocument();
+    expect(screen.queryByText('User already registered')).not.toBeInTheDocument();
     expect(mockSupabase.rpc).not.toHaveBeenCalled();
     expect(screen.queryByText('DASHBOARD_STUB')).not.toBeInTheDocument();
   });
@@ -134,7 +137,10 @@ describe('Join (signup + invite code redemption)', () => {
     expect(screen.queryByText('DASHBOARD_STUB')).not.toBeInTheDocument();
   });
 
-  it('shows an error for an already-used invite code and does not redirect', async () => {
+  it('shows the generic invite-code error (not the raw RPC message) for an already-used code, and does not redirect', async () => {
+    // Regression guard for the error-handling audit: every redeem_invite_code
+    // failure now shows the same safe generic message regardless of the raw
+    // Postgres/RPC wording -- see errorMessages.js.
     const user = userEvent.setup();
     mockSupabase.auth.signUp.mockResolvedValue({
       data: { session: { access_token: 'tok' }, user: { id: 'u1' } },
@@ -148,7 +154,8 @@ describe('Join (signup + invite code redemption)', () => {
 
     await fillJoinForm(user, { code: 'SCOPE-USED' });
 
-    expect(await screen.findByText('This invite code has already been used.')).toBeInTheDocument();
+    expect(await screen.findByText('That invite code is invalid or already used.')).toBeInTheDocument();
+    expect(screen.queryByText('This invite code has already been used.')).not.toBeInTheDocument();
     expect(screen.queryByText('DASHBOARD_STUB')).not.toBeInTheDocument();
   });
 

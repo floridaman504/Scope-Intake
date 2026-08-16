@@ -49,6 +49,8 @@ function escapeHtml(value) {
 //   RESEND_API_KEY             (new -- from resend.com, free tier)
 //   CRON_SECRET                (new -- any random string you generate)
 
+import { sendSafeError } from './_lib/errorResponse.js';
+
 const CLAIM_WINDOW_MINUTES = 60;
 
 export default async function handler(req, res) {
@@ -194,6 +196,10 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ checked: overdueJobs.length, alerted, failed, failures });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    // This endpoint is secret-gated (see the x-cron-secret check above) and
+    // only ever called by the scheduled workflow, not a customer -- but the
+    // audit's policy is the same everywhere: no raw internal error text in
+    // a response body. See api/_lib/errorResponse.js.
+    return sendSafeError(res, 500, err, 'Internal error while checking for missed leads.');
   }
 }
