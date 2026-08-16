@@ -158,3 +158,18 @@ jobs:
             git commit -m "Backup: $STAMP"
             git push origin HEAD
           fi
+
+      - name: Prune error_log rows older than 90 days
+        # Tier 2 #10 ("Error Handling Rebuild") retention requirement --
+        # docs/migrations/2026-08-16-error-log-pipeline.sql. Piggybacks on
+        # this workflow rather than getting its own: same credential
+        # (SUPABASE_DB_URL), same psql-17 client already installed above by
+        # the "Install postgresql-client" step, one daily maintenance run
+        # instead of two. cleanup_old_error_logs() is a plain SQL function
+        # (see that migration) so this is a one-line call, not a raw DELETE
+        # duplicated here.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          /usr/lib/postgresql/17/bin/psql "$SUPABASE_DB_URL" -1 -c "select cleanup_old_error_logs();"
