@@ -6,6 +6,8 @@ import Login from './Login.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import ResetPassword from './ResetPassword.jsx'
 import EmailConfirmed from './EmailConfirmed.jsx'
+import ChangeEmail from './ChangeEmail.jsx'
+import EmailChangeConfirmed from './EmailChangeConfirmed.jsx'
 import Join from './Join.jsx'
 import Dashboard from './Dashboard.jsx'
 import JobsQueue from './JobsQueue.jsx'
@@ -30,6 +32,15 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/email-confirmed" element={<EmailConfirmed />} />
+            <Route path="/email-changed" element={<EmailChangeConfirmed />} />
+            <Route
+              path="/change-email"
+              element={
+                <ProtectedRoute allowedRoles={['owner', 'dispatcher', 'plumber']}>
+                  <ChangeEmail />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/join" element={<Join />} />
             <Route
               path="/dashboard"
