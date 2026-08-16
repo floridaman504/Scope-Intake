@@ -96,6 +96,15 @@ export default function Dashboard() {
             Manage team
           </Link>
         )}
+        {employee?.role === 'owner' && (
+          <Link
+            to="/audit-log"
+            style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}
+            className="text-sm px-4 py-2 rounded-md"
+          >
+            Audit log
+          </Link>
+        )}
         <button
           onClick={signOut}
           style={{ border: '1px solid #2A2A2A', color: '#C8C8C8' }}

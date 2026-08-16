@@ -404,6 +404,17 @@ export function AuthProvider({ children }) {
   const changePasswordAndSignOutEverywhere = useCallback(async (newPassword) => {
     const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword });
     if (updateErr) throw updateErr;
+    // Sensitive-action audit trail (docs/migrations/2026-08-16-audit-trail.sql,
+    // Tier 2 #9.5). Best-effort and fire-and-forget on purpose, same as the
+    // sign_out_everywhere call right below it -- a logging hiccup should
+    // never block a password reset that already succeeded. log_password_reset()
+    // resolves who's calling it server-side from auth.uid(), so this can't be
+    // used to log a fake entry for anyone but the caller themselves.
+    try {
+      await supabase.rpc('log_password_reset', {});
+    } catch (e) {
+      // best-effort; proceed regardless
+    }
     try {
       await supabase.rpc('sign_out_everywhere', {});
     } catch (e) {

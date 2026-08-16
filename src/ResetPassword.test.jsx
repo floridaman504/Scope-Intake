@@ -77,7 +77,10 @@ describe('ResetPassword', () => {
     await user.click(screen.getByRole('button', { name: /update password/i }));
 
     await waitFor(() => expect(mockSupabase.auth.updateUser).toHaveBeenCalledWith({ password: 'newpw123' }));
-    // changePasswordAndSignOutEverywhere revokes every other session too.
+    // changePasswordAndSignOutEverywhere logs the reset to the audit trail
+    // (docs/migrations/2026-08-16-audit-trail.sql) and revokes every other
+    // session too.
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('log_password_reset', {});
     expect(mockSupabase.rpc).toHaveBeenCalledWith('sign_out_everywhere', {});
     expect(await screen.findByText(/password updated/i)).toBeInTheDocument();
 

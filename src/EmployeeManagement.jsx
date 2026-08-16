@@ -72,7 +72,10 @@ export default function EmployeeManagement() {
           <div style={{ backgroundColor: colors.gold }} className="w-2 h-2 rounded-full" />
           <span style={{ ...fontHead }} className="text-lg font-bold tracking-[0.15em]">SCOPE</span>
         </div>
-        <Link to="/dashboard" style={{ color: colors.muted }} className="text-sm py-2">Back to dashboard</Link>
+        <div className="flex items-center gap-4">
+          <Link to="/audit-log" style={{ color: colors.muted }} className="text-sm py-2">Audit log</Link>
+          <Link to="/dashboard" style={{ color: colors.muted }} className="text-sm py-2">Back to dashboard</Link>
+        </div>
       </div>
 
       <h1 style={{ ...fontHead, color: colors.textBright }} className="text-2xl font-bold mb-1">Team</h1>
