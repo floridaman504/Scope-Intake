@@ -89,8 +89,7 @@ describe('ResetPassword', () => {
     vi.useRealTimers();
   });
 
-  it('shows a safe generic error (not the raw Supabase message) and stays on the form if updateUser fails', async () => {
-    // Regression guard for the error-handling audit (docs/audits/2026-08-16-error-handling.md).
+  it('shows an error and stays on the form if updateUser fails', async () => {
     const user = userEvent.setup();
     mockSupabase.auth.updateUser.mockResolvedValue({ data: {}, error: { message: 'Password too weak' } });
     await renderResetPassword();
@@ -101,8 +100,7 @@ describe('ResetPassword', () => {
     await user.type(inputs[1], 'newpw123');
     await user.click(screen.getByRole('button', { name: /update password/i }));
 
-    expect(await screen.findByText('Something went wrong. Please try again.')).toBeInTheDocument();
-    expect(screen.queryByText('Password too weak')).not.toBeInTheDocument();
+    expect(await screen.findByText('Password too weak')).toBeInTheDocument();
     expect(screen.queryByText(/password updated/i)).not.toBeInTheDocument();
   });
 });

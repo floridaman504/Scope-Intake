@@ -57,7 +57,12 @@ export default function AuditLog() {
       .order('created_at', { ascending: false })
       .limit(200);
     if (loadErr) {
-      setError('Could not load the audit log: ' + loadErr.message);
+      // Generic message shown on screen; the real error only ever goes to
+      // the browser console (same split this codebase uses everywhere
+      // else -- see docs/audits/2026-08-16-error-handling.md) so nothing
+      // internal leaks to whoever's looking at the screen.
+      console.error('Could not load audit log:', loadErr);
+      setError('Could not load the audit log. Please try again.');
     } else {
       setRows(data || []);
     }
