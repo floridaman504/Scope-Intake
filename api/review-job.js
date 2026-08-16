@@ -144,7 +144,11 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
     if (data.error) {
       // Raw Anthropic error text (model/rate-limit internals) must not
       // reach the client -- see api/_lib/errorResponse.js.
-      return sendSafeError(res, 500, data.error, 'The AI service is temporarily unavailable. Please try again.');
+      return await sendSafeError(res, 500, data.error, 'The AI service is temporarily unavailable. Please try again.', {
+        source: 'api:review-job',
+        route: '/api/review-job',
+        method: req.method,
+      });
     }
 
     // Log actual token usage regardless of what happens next -- this is
@@ -171,6 +175,10 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
     // Catch-all: could be a raw Supabase/Postgres error, a JSON.parse
     // failure, or any other internal exception -- none of it belongs in a
     // public response body. See api/_lib/errorResponse.js.
-    return sendSafeError(res, 500, err, 'Something went wrong processing your request. Please try again.');
+    return await sendSafeError(res, 500, err, 'Something went wrong processing your request. Please try again.', {
+      source: 'api:review-job',
+      route: '/api/review-job',
+      method: req.method,
+    });
   }
 }
