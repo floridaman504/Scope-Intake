@@ -16,6 +16,9 @@ import { colors, fontHead } from './theme.js';
 // (get_my_company_id()/get_my_role() return NULL for a deactivated
 // employee, so every RLS-gated table denies them regardless of this UI) --
 // this page is the control surface, not the actual gate.
+const ROLE_OPTIONS = ['owner', 'dispatcher', 'plumber'];
+const ROLE_LABELS = { owner: 'Owner', dispatcher: 'Dispatcher', plumber: 'Plumber' };
+
 export default function EmployeeManagement() {
   const { employee: me } = useAuth();
   const [employees, setEmployees] = useState([]);
@@ -63,6 +66,44 @@ export default function EmployeeManagement() {
     await load();
   };
 
+  // Role editing. Previously the only way an employee ever got a role was
+  // redeem_invite_code() at signup -- there was no way to fix a mis-assigned
+  // role afterward short of having them redo the whole invite flow. No new
+  // migration needed for this: employees_update_owner_company (added in
+  // docs/migrations/2026-08-12-employee-deactivation-and-email-constraint.sql)
+  // already lets an owner update any column on their own company's
+  // employees, and the audit-trail migration's employees_audit_log_trigger
+  // (docs/migrations/2026-08-16-audit-trail.sql) already logs an
+  // 'employee_role_changed' entry the moment role differs on an UPDATE --
+  // this is purely wiring up a UI to a capability the database already had.
+  const handleRoleChange = async (emp, newRole) => {
+    if (newRole === emp.role) return;
+    const label = emp.full_name || emp.email;
+    const confirmed = window.confirm(
+      `Change ${label}'s role from ${ROLE_LABELS[emp.role] || emp.role} to ${ROLE_LABELS[newRole] || newRole}? This changes what they can see and do immediately, and is recorded in the audit log.`
+    );
+    if (!confirmed) return;
+
+    setBusyId(emp.id);
+    setError('');
+    const { error: updateErr } = await supabase
+      .from('employees')
+      .update({ role: newRole })
+      .eq('id', emp.id);
+    setBusyId(null);
+    if (updateErr) {
+      // Generic message on screen, real error only to the console -- same
+      // split this codebase uses everywhere else (see
+      // docs/audits/2026-08-16-error-handling.md), kept inline here rather
+      // than importing the shared helper so this PR doesn't depend on
+      // PR #33 (error-handling-fix) merging first.
+      console.error('Could not update employee role:', updateErr);
+      setError('Could not update employee role. Please try again.');
+      return;
+    }
+    await load();
+  };
+
   return (
     <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
       className="font-sans p-4 sm:p-8">
@@ -100,10 +141,26 @@ export default function EmployeeManagement() {
                     {emp.full_name || emp.email}
                     {emp.id === me?.id && <span style={{ color: colors.faint }}> (you)</span>}
                   </p>
-                  <p style={{ color: colors.faint }} className="text-xs mt-0.5">
-                    {emp.email} · {emp.role}
+                  <p style={{ color: colors.faint }} className="text-xs mt-0.5 flex items-center flex-wrap gap-x-1">
+                    <span>{emp.email} ·</span>
+                    {emp.id === me?.id ? (
+                      <span>{ROLE_LABELS[emp.role] || emp.role}</span>
+                    ) : (
+                      <select
+                        value={emp.role}
+                        onChange={(e) => handleRoleChange(emp, e.target.value)}
+                        disabled={busyId === emp.id}
+                        aria-label={`Change role for ${emp.full_name || emp.email}`}
+                        style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
+                        className="text-xs rounded px-1 py-0.5"
+                      >
+                        {ROLE_OPTIONS.map((r) => (
+                          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                        ))}
+                      </select>
+                    )}
                     {isDeactivated && (
-                      <span style={{ color: colors.danger }}> · Deactivated {new Date(emp.deactivated_at).toLocaleDateString()}</span>
+                      <span style={{ color: colors.danger }}>· Deactivated {new Date(emp.deactivated_at).toLocaleDateString()}</span>
                     )}
                   </p>
                 </div>
