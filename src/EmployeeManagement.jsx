@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient.js';
 import { useAuth } from './AuthContext.jsx';
 import { colors, fontHead } from './theme.js';
+import { logSafeError } from './errorMessages.js';
 
 // Owner-only employee list + deactivate/reactivate. Priority 1b (database
 // audit): there was no employee-removal flow at all before this, and no
@@ -30,7 +31,7 @@ export default function EmployeeManagement() {
       .select('id, full_name, email, role, deactivated_at')
       .order('full_name', { ascending: true });
     if (loadErr) {
-      setError('Could not load employees: ' + loadErr.message);
+      setError(logSafeError('Could not load employees:', loadErr, 'Could not load employees. Please try again.'));
     } else {
       setEmployees(data || []);
     }
@@ -57,7 +58,7 @@ export default function EmployeeManagement() {
       .eq('id', emp.id);
     setBusyId(null);
     if (updateErr) {
-      setError('Could not update employee: ' + updateErr.message);
+      setError(logSafeError('Could not update employee:', updateErr, 'Could not update employee. Please try again.'));
       return;
     }
     await load();
@@ -71,7 +72,10 @@ export default function EmployeeManagement() {
           <div style={{ backgroundColor: colors.gold }} className="w-2 h-2 rounded-full" />
           <span style={{ ...fontHead }} className="text-lg font-bold tracking-[0.15em]">SCOPE</span>
         </div>
-        <Link to="/dashboard" style={{ color: colors.muted }} className="text-sm py-2">Back to dashboard</Link>
+        <div className="flex items-center gap-4">
+          <Link to="/audit-log" style={{ color: colors.muted }} className="text-sm py-2">Audit log</Link>
+          <Link to="/dashboard" style={{ color: colors.muted }} className="text-sm py-2">Back to dashboard</Link>
+        </div>
       </div>
 
       <h1 style={{ ...fontHead, color: colors.textBright }} className="text-2xl font-bold mb-1">Team</h1>

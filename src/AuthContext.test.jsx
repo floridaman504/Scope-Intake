@@ -33,6 +33,7 @@ function Consumer() {
       <div data-testid="session-id">{auth.sessionId ?? 'none'}</div>
       <button onClick={() => auth.signOut()}>sign-out</button>
       <button onClick={() => auth.signOutEverywhere()}>sign-out-everywhere</button>
+      <button onClick={() => auth.changePasswordAndSignOutEverywhere('newpw123')}>change-password</button>
     </div>
   );
 }
@@ -175,6 +176,38 @@ describe('AuthContext', () => {
     await user.click(screen.getByText('sign-out-everywhere'));
 
     await waitFor(() => expect(mockSupabase.rpc).toHaveBeenCalledWith('sign_out_everywhere', {}));
+  });
+
+  it('changePasswordAndSignOutEverywhere logs the reset to the audit trail (log_password_reset) before revoking every session', async () => {
+    // Regression guard for docs/migrations/2026-08-16-audit-trail.sql.
+    mockSupabase.auth.getSession.mockResolvedValue({ data: { session: AUTH_SESSION } });
+    setTableResponse('employees', { data: { role: 'owner', full_name: 'D', email: 'd@scope.test' }, error: null });
+    await renderConsumer();
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+    const user = (await import('@testing-library/user-event')).default.setup();
+    await user.click(screen.getByText('change-password'));
+
+    await waitFor(() => expect(mockSupabase.auth.updateUser).toHaveBeenCalledWith({ password: 'newpw123' }));
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('log_password_reset', {});
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('sign_out_everywhere', {});
+  });
+
+  it('changePasswordAndSignOutEverywhere still completes (fails open) if log_password_reset itself errors', async () => {
+    mockSupabase.auth.getSession.mockResolvedValue({ data: { session: AUTH_SESSION } });
+    setTableResponse('employees', { data: { role: 'owner', full_name: 'D', email: 'd@scope.test' }, error: null });
+    setRpcResponse('log_password_reset', { data: null, error: { message: 'function log_password_reset does not exist' } });
+    await renderConsumer();
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'));
+
+    const user = (await import('@testing-library/user-event')).default.setup();
+    await user.click(screen.getByText('change-password'));
+
+    // A logging hiccup on a secondary system must never block the password
+    // change itself from completing -- same fail-open contract as the
+    // sign_out_everywhere call right next to it.
+    await waitFor(() => expect(screen.getByTestId('session')).toHaveTextContent('no-session'));
+    expect(mockSupabase.auth.signOut).toHaveBeenCalled();
   });
 
   it('reacts to an externally-signed-out auth state change (e.g. refresh token rejected) by clearing session and saving a restore snapshot', async () => {
