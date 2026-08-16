@@ -175,12 +175,15 @@ describe('check-missed-leads handler', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns 500 with the error message when the jobs lookup itself throws', async () => {
+  it('returns 500 with a safe generic message (not the raw error) when the jobs lookup itself throws', async () => {
+    // Regression guard for the error-handling audit (docs/audits/2026-08-16-error-handling.md):
+    // this endpoint used to return err.message verbatim in the response body.
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network down'))));
     const res = makeRes();
     await handler(makeReq(), res);
     expect(res.statusCode).toBe(500);
-    expect(res.body.error).toBe('network down');
+    expect(res.body.error).toBe('Internal error while checking for missed leads.');
+    expect(res.body.error).not.toContain('network down');
     vi.unstubAllGlobals();
   });
 });
