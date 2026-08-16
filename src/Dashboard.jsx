@@ -66,8 +66,12 @@ export default function Dashboard() {
       <p style={{ color: '#C4C4C4' }} className="text-sm mb-1">
         Name: {employee?.full_name || '—'}
       </p>
-      <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
+      <p style={{ color: '#C4C4C4' }} className="text-sm mb-1">
         Role: <span style={{ color: '#C9A227' }}>{employee?.role || '—'}</span>
+      </p>
+      <p style={{ color: '#C4C4C4' }} className="text-sm mb-6">
+        Email: {employee?.email || '—'}{' '}
+        <Link to="/change-email" style={{ color: '#C9A227' }} className="text-xs">Change email</Link>
       </p>
 
       <Link
