@@ -73,7 +73,7 @@ export default function Join() {
   };
 
   return (
-    <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
+    <main style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
       className="flex items-center justify-center px-6 py-10 font-sans">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-8 justify-center">
@@ -98,7 +98,7 @@ export default function Join() {
               onChange={(e) => setCode(e.target.value)}
               placeholder="e.g. SCOPE-4X7K"
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base placeholder-[#9A9A9A]"
+              className="w-full rounded-lg px-4 py-3 outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] text-base placeholder-[#9A9A9A]"
             />
           </div>
           <div>
@@ -109,7 +109,7 @@ export default function Join() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base"
+              className="w-full rounded-lg px-4 py-3 outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] text-base"
             />
           </div>
           <div>
@@ -120,7 +120,7 @@ export default function Join() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-              className="w-full rounded-lg px-4 py-3 outline-none text-base"
+              className="w-full rounded-lg px-4 py-3 outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] text-base"
             />
           </div>
           <div>
@@ -133,7 +133,7 @@ export default function Join() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-                className="w-full rounded-lg pl-4 pr-12 py-3 outline-none text-base"
+                className="w-full rounded-lg pl-4 pr-12 py-3 outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] text-base"
               />
               <button
                 type="button"
@@ -171,6 +171,6 @@ export default function Join() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
-    </div>
+    </main>
   );
 }

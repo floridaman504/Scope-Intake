@@ -46,7 +46,7 @@ export default function ChangeEmail() {
   };
 
   return (
-    <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
+    <main style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
       className="flex items-center justify-center px-6 font-sans">
       <div className="w-full max-w-sm">
         <div className="flex items-center gap-2 mb-8 justify-center">
@@ -82,7 +82,7 @@ export default function ChangeEmail() {
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                   style={{ color: '#111111', backgroundColor: '#F4F1E8', border: '2px solid #454545' }}
-                  className="w-full rounded-lg px-4 py-3 outline-none text-base"
+                  className="w-full rounded-lg px-4 py-3 outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] text-base"
                 />
               </div>
 
@@ -111,6 +111,6 @@ export default function ChangeEmail() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
-    </div>
+    </main>
   );
 }

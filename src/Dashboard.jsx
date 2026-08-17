@@ -53,7 +53,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
+    <main style={{ backgroundColor: '#0A0A0A', color: '#EDEAE3', minHeight: '100vh' }}
       className="font-sans p-8">
       <div className="flex items-center gap-2 mb-8">
         <div style={{ backgroundColor: '#C9A227' }} className="w-2 h-2 rounded-full" />
@@ -149,6 +149,6 @@ export default function Dashboard() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
-    </div>
+    </main>
   );
 }

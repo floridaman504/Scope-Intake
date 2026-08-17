@@ -358,7 +358,7 @@ export default function JobsQueue() {
   let lastGroup = null;
 
   return (
-    <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
+    <main style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
       className="font-sans p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6 sm:mb-8">
         <div className="flex items-center gap-2">
@@ -418,10 +418,11 @@ export default function JobsQueue() {
 
         {isManager && (
           <div className="flex items-center gap-2">
-            <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide shrink-0">
+            <label htmlFor="jobs-assignee-filter" style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide shrink-0">
               Assigned to
             </label>
             <select
+              id="jobs-assignee-filter"
               value={assigneeFilter}
               onChange={(e) => setAssigneeFilter(e.target.value)}
               style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
@@ -530,10 +531,11 @@ export default function JobsQueue() {
                       <div className="mt-3 space-y-3">
                         {isManager && (
                         <div>
-                          <label style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
+                          <label htmlFor={`status-select-${j.id}`} style={{ color: colors.faint }} className="text-xs font-semibold uppercase tracking-wide block mb-1.5">
                             Status
                           </label>
                           <select
+                            id={`status-select-${j.id}`}
                             value={j.status || 'new'}
                             onChange={(e) => handleStatusChange(j.id, e.target.value)}
                             style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
@@ -653,7 +655,7 @@ export default function JobsQueue() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
-    </div>
+    </main>
   );
 }
 

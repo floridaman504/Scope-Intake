@@ -457,7 +457,7 @@ rows={4}
 // rejected later at submit time.
 maxLength={2000}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors resize-none text-base shadow-inner"
+className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] transition-colors resize-none text-base shadow-inner"
 />
 )}
 
@@ -471,7 +471,7 @@ placeholder={current.placeholder}
 // Matches jobs_fixture_length in docs/migrations/2026-08-15-add-input-limits.sql.
 maxLength={500}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] transition-colors text-base shadow-inner"
 />
 )}
 
@@ -487,7 +487,7 @@ placeholder="Full name"
 // in docs/migrations/2026-08-15-add-input-limits.sql.
 maxLength={200}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] transition-colors text-base shadow-inner"
 />
 <input
 type="tel"
@@ -496,7 +496,7 @@ onChange={(e) => setContactField('phone', e.target.value)}
 placeholder="Phone number"
 maxLength={30}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] transition-colors text-base shadow-inner"
 />
 <input
 type="email"
@@ -505,7 +505,7 @@ onChange={(e) => setContactField('email', e.target.value)}
 placeholder="Email (optional)"
 maxLength={320}
 style={{ color: '#111111', backgroundColor: '#F4F1E8', caretColor: '#111111', border: '2px solid #454545' }}
-className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none transition-colors text-base shadow-inner"
+className="w-full rounded-lg px-4 py-3.5 placeholder-[#9A9A9A] outline-none focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[#E8BD3A] transition-colors text-base shadow-inner"
 />
 </div>
 )}
