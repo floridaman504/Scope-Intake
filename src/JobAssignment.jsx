@@ -113,6 +113,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
                 onClick={() => removeAssignee(e.id)}
                 disabled={busyId === e.id}
                 title={`Remove ${e.full_name || e.email}`}
+                aria-label={`Remove ${e.full_name || e.email}`}
                 style={{ color: colors.muted }}
                 className="text-xs px-1"
               >
@@ -128,6 +129,7 @@ export default function JobAssignment({ job, role, assignableEmployees, currentA
           <select
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
+            aria-label="Select a plumber or owner to assign"
             style={{ backgroundColor: colors.panelAlt, color: colors.text, border: `1px solid ${colors.borderLight}` }}
             className="text-base rounded-md px-3 py-2.5 min-w-[180px]"
           >

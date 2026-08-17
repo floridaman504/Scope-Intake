@@ -106,7 +106,7 @@ export default function EmployeeManagement() {
   };
 
   return (
-    <div style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
+    <main style={{ backgroundColor: colors.bg, color: colors.text, minHeight: '100vh' }}
       className="font-sans p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
@@ -191,6 +191,6 @@ export default function EmployeeManagement() {
         @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600&display=swap');
         .font-sans { font-family: 'Inter', sans-serif; }
       `}</style>
-    </div>
+    </main>
   );
 }
