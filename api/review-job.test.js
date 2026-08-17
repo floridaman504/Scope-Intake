@@ -227,4 +227,30 @@ describe('review-job handler', () => {
     expect(res.body.error).not.toContain('ECONNRESET');
     vi.unstubAllGlobals();
   });
+
+  it('also writes the real error to error_log with this endpoint\'s route/source (Tier 2 #10)', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (String(url).includes('/rpc/log_app_error')) {
+        return Promise.resolve({ ok: true, json: async () => ({}) });
+      }
+      // The Anthropic call itself.
+      return Promise.resolve({ ok: true, json: async () => ({ error: { message: 'overloaded_error' } }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = makeRes();
+    await handler(makeReq({ summary: 'Leak under sink' }), res);
+    expect(res.statusCode).toBe(500);
+
+    const logCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/rpc/log_app_error'));
+    expect(logCall).toBeTruthy();
+    const loggedBody = JSON.parse(logCall[1].body);
+    expect(loggedBody).toMatchObject({
+      p_severity: 'error',
+      p_source: 'api:review-job',
+      p_route: '/api/review-job',
+      p_http_method: 'POST',
+      p_message: 'The AI service is temporarily unavailable. Please try again.',
+    });
+    vi.unstubAllGlobals();
+  });
 });

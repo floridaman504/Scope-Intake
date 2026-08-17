@@ -11,6 +11,11 @@ import handler from './check-missed-leads.js';
 const ENV = {
   CRON_SECRET: 'test-secret',
   VITE_SUPABASE_URL: 'https://example.supabase.co',
+  // Not otherwise used by this file's own REST calls (those use
+  // SUPABASE_SERVICE_ROLE_KEY) -- needed because api/_lib/errorResponse.js's
+  // logAppError always logs via the anon key, same as api/review-job.js.
+  // Real deployments already have this set project-wide in Vercel.
+  VITE_SUPABASE_ANON_KEY: 'anon-key',
   SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
   RESEND_API_KEY: 'resend-key',
 };
@@ -54,6 +59,10 @@ const OWNER = { email: 'owner@example.com', full_name: 'Owner', role: 'owner' };
 // Builds a fetch stub that dispatches on URL shape, matching the real
 // sequence handler() drives: GET jobs -> (per job) GET employees -> POST
 // Resend -> PATCH jobs. Each stage's response is overridable per test.
+// Also handles the error_log write (Tier 2 #10, docs/migrations/2026-08-16-error-log-pipeline.sql)
+// api/_lib/errorResponse.js's logAppError fires on a send/mark failure or
+// the catch-all -- routed here too so those tests don't spuriously log an
+// "Unexpected fetch call" to the console on every run.
 function makeFetchRouter({ jobs = [], employees = OWNER ? [OWNER] : [], emailOk = true, emailStatus = 200, patchOk = true, patchStatus = 200 } = {}) {
   return vi.fn((url, opts = {}) => {
     const method = opts.method || 'GET';
@@ -68,6 +77,9 @@ function makeFetchRouter({ jobs = [], employees = OWNER ? [OWNER] : [], emailOk 
     }
     if (typeof url === 'string' && url.includes('/rest/v1/jobs?id=eq.') && method === 'PATCH') {
       return Promise.resolve({ ok: patchOk, status: patchStatus, json: async () => ({}) });
+    }
+    if (typeof url === 'string' && url.includes('/rest/v1/rpc/log_app_error')) {
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     }
     throw new Error(`Unexpected fetch call: ${method} ${url}`);
   });
@@ -172,6 +184,43 @@ describe('check-missed-leads handler', () => {
     expect(res.body).toEqual({ checked: 1, alerted: 1, failed: 0, failures: [] });
     const resendCall = fetchMock.mock.calls.find(([url]) => String(url).includes('resend.com'));
     expect(resendCall).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it('logs a warning to error_log when the email send fails (Tier 2 #10 boundary-coverage finding)', async () => {
+    // Before this session, this exact failure was only ever visible in
+    // this response body -- which only a discarded `curl` output ever
+    // reads (see check-missed-leads.yml). Confirms it now also reaches
+    // the durable error_log table via log_app_error.
+    const fetchMock = makeFetchRouter({ jobs: [OVERDUE_JOB], emailOk: false, emailStatus: 403 });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.body.failed).toBe(1);
+
+    const logCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/rpc/log_app_error'));
+    expect(logCall).toBeTruthy();
+    const loggedBody = JSON.parse(logCall[1].body);
+    expect(loggedBody).toMatchObject({
+      p_severity: 'warning',
+      p_source: 'api:check-missed-leads',
+      p_route: '/api/check-missed-leads',
+    });
+    expect(loggedBody.p_message).toContain(OVERDUE_JOB.id);
+    vi.unstubAllGlobals();
+  });
+
+  it('logs a warning to error_log when the mark-as-alerted PATCH fails', async () => {
+    const fetchMock = makeFetchRouter({ jobs: [OVERDUE_JOB], patchOk: false, patchStatus: 500 });
+    vi.stubGlobal('fetch', fetchMock);
+    const res = makeRes();
+    await handler(makeReq(), res);
+    expect(res.body.failed).toBe(1);
+
+    const logCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/rpc/log_app_error'));
+    expect(logCall).toBeTruthy();
+    const loggedBody = JSON.parse(logCall[1].body);
+    expect(loggedBody.p_severity).toBe('warning');
     vi.unstubAllGlobals();
   });
 

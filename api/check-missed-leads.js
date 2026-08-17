@@ -49,7 +49,7 @@ function escapeHtml(value) {
 //   RESEND_API_KEY             (new -- from resend.com, free tier)
 //   CRON_SECRET                (new -- any random string you generate)
 
-import { sendSafeError } from './_lib/errorResponse.js';
+import { sendSafeError, logAppError } from './_lib/errorResponse.js';
 
 const CLAIM_WINDOW_MINUTES = 60;
 
@@ -159,6 +159,20 @@ export default async function handler(req, res) {
         if (!sendOk) {
           failed += 1;
           failures.push({ jobId: job.id, status: emailRes.status });
+          // This is exactly the failure mode the 2026-08-09 BUGFIX above
+          // describes -- and until now it was only ever visible in this
+          // response body, which only a discarded `curl` output ever
+          // reads (see check-missed-leads.yml). 'warning', not 'error':
+          // it's self-healing (unmarked, retried next run), but worth an
+          // owner seeing if it keeps happening across runs.
+          await logAppError({
+            severity: 'warning',
+            source: 'api:check-missed-leads',
+            route: '/api/check-missed-leads',
+            httpMethod: req.method,
+            message: `Missed-lead alert email failed to send for job ${job.id}`,
+            detail: `Resend responded with status ${emailRes.status}`,
+          });
         }
       }
 
@@ -190,6 +204,14 @@ export default async function handler(req, res) {
         } else {
           failed += 1;
           failures.push({ jobId: job.id, status: markRes.status, stage: 'mark_alerted' });
+          await logAppError({
+            severity: 'warning',
+            source: 'api:check-missed-leads',
+            route: '/api/check-missed-leads',
+            httpMethod: req.method,
+            message: `Could not mark job ${job.id} as alerted after a successful send`,
+            detail: `PATCH to jobs responded with status ${markRes.status}`,
+          });
         }
       }
     }
@@ -200,6 +222,10 @@ export default async function handler(req, res) {
     // only ever called by the scheduled workflow, not a customer -- but the
     // audit's policy is the same everywhere: no raw internal error text in
     // a response body. See api/_lib/errorResponse.js.
-    return sendSafeError(res, 500, err, 'Internal error while checking for missed leads.');
+    return await sendSafeError(res, 500, err, 'Internal error while checking for missed leads.', {
+      source: 'api:check-missed-leads',
+      route: '/api/check-missed-leads',
+      method: req.method,
+    });
   }
 }

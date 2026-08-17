@@ -13,6 +13,7 @@ import Dashboard from './Dashboard.jsx'
 import JobsQueue from './JobsQueue.jsx'
 import EmployeeManagement from './EmployeeManagement.jsx'
 import AuditLog from './AuditLog.jsx'
+import ErrorLog from './ErrorLog.jsx'
 import SessionRegistry from './SessionRegistry.jsx'
 import NotFound from './NotFound.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
@@ -77,6 +78,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
               element={
                 <ProtectedRoute allowedRoles={['owner']}>
                   <AuditLog />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/error-log"
+              element={
+                <ProtectedRoute allowedRoles={['owner']}>
+                  <ErrorLog />
                 </ProtectedRoute>
               }
             />

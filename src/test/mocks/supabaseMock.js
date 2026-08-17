@@ -18,6 +18,10 @@ function createChainable(getResponse) {
     update: vi.fn(() => chain),
     delete: vi.fn(() => chain),
     eq: vi.fn(() => chain),
+    // Added for src/ErrorLog.jsx's date/route filters -- same
+    // returns-the-chain shape as every other query-builder method here.
+    gte: vi.fn(() => chain),
+    ilike: vi.fn(() => chain),
     order: vi.fn(() => chain),
     limit: vi.fn(() => chain),
     single: vi.fn(() => Promise.resolve(getResponse())),
