@@ -15,5 +15,5 @@ jobs:
     steps:
       - name: Call missed-lead check endpoint
         run: |
-          curl -sf -X POST "https://scope-intake.vercel.app/api/check-missed-leads" \
+          curl -sf -X POST "https://scope-intake.vercel.app/api/v1/check-missed-leads" \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}"
