@@ -204,7 +204,7 @@ describe('check-missed-leads handler', () => {
     expect(loggedBody).toMatchObject({
       p_severity: 'warning',
       p_source: 'api:check-missed-leads',
-      p_route: '/api/check-missed-leads',
+      p_route: '/api/v1/check-missed-leads',
     });
     expect(loggedBody.p_message).toContain(OVERDUE_JOB.id);
     vi.unstubAllGlobals();

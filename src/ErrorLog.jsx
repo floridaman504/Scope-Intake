@@ -102,7 +102,7 @@ export default function ErrorLog() {
             type="text"
             value={routeFilter}
             onChange={(e) => setRouteFilter(e.target.value)}
-            placeholder="e.g. /api/review-job"
+            placeholder="e.g. /api/v1/review-job"
             style={{ backgroundColor: colors.panel, border: `1px solid ${colors.border}`, color: colors.text }}
             className="rounded-md px-3 py-2 text-sm w-48"
           />

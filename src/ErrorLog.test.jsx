@@ -43,7 +43,7 @@ describe('ErrorLog', () => {
           created_at: '2026-08-16T12:00:00Z',
           severity: 'error',
           source: 'api:review-job',
-          route: '/api/review-job',
+          route: '/api/v1/review-job',
           http_method: 'POST',
           message: 'The AI service is temporarily unavailable. Please try again.',
           detail: 'Anthropic 529 overloaded\nstack trace...',
@@ -53,7 +53,7 @@ describe('ErrorLog', () => {
           created_at: '2026-08-16T11:00:00Z',
           severity: 'warning',
           source: 'api:check-missed-leads',
-          route: '/api/check-missed-leads',
+          route: '/api/v1/check-missed-leads',
           http_method: 'POST',
           message: 'Missed-lead alert email failed to send for job abc123',
           detail: 'Resend responded with status 403',
@@ -67,7 +67,7 @@ describe('ErrorLog', () => {
     expect(screen.getByText(/missed-lead alert email failed to send/i)).toBeInTheDocument();
     expect(screen.getByText('error')).toBeInTheDocument();
     expect(screen.getByText('warning')).toBeInTheDocument();
-    expect(screen.getAllByText(/\/api\/review-job|\/api\/check-missed-leads/)).toHaveLength(2);
+    expect(screen.getAllByText(/\/api\/v1\/review-job|\/api\/v1\/check-missed-leads/)).toHaveLength(2);
   });
 
   it('reveals the raw detail only after clicking "Show details" -- not shown by default', async () => {

@@ -2,7 +2,7 @@
 // Your API key stays private here and is never visible to anyone using the site.
 
 import { createClient } from '@supabase/supabase-js';
-import { sendSafeError } from './_lib/errorResponse.js';
+import { sendSafeError } from '../_lib/errorResponse.js';
 
 // Server-side Supabase client using the anon key -- same key the browser
 // uses. check_rate_limit() and log_ai_usage() are SECURITY DEFINER
@@ -146,7 +146,7 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
       // reach the client -- see api/_lib/errorResponse.js.
       return await sendSafeError(res, 500, data.error, 'The AI service is temporarily unavailable. Please try again.', {
         source: 'api:review-job',
-        route: '/api/review-job',
+        route: '/api/v1/review-job',
         method: req.method,
       });
     }
@@ -177,7 +177,7 @@ Media attached: ${mediaCount} file(s) (${mediaTypes})`;
     // public response body. See api/_lib/errorResponse.js.
     return await sendSafeError(res, 500, err, 'Something went wrong processing your request. Please try again.', {
       source: 'api:review-job',
-      route: '/api/review-job',
+      route: '/api/v1/review-job',
       method: req.method,
     });
   }

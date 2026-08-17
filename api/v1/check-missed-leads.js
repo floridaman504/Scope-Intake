@@ -49,7 +49,7 @@ function escapeHtml(value) {
 //   RESEND_API_KEY             (new -- from resend.com, free tier)
 //   CRON_SECRET                (new -- any random string you generate)
 
-import { sendSafeError, logAppError } from './_lib/errorResponse.js';
+import { sendSafeError, logAppError } from '../_lib/errorResponse.js';
 
 const CLAIM_WINDOW_MINUTES = 60;
 
@@ -168,7 +168,7 @@ export default async function handler(req, res) {
           await logAppError({
             severity: 'warning',
             source: 'api:check-missed-leads',
-            route: '/api/check-missed-leads',
+            route: '/api/v1/check-missed-leads',
             httpMethod: req.method,
             message: `Missed-lead alert email failed to send for job ${job.id}`,
             detail: `Resend responded with status ${emailRes.status}`,
@@ -207,7 +207,7 @@ export default async function handler(req, res) {
           await logAppError({
             severity: 'warning',
             source: 'api:check-missed-leads',
-            route: '/api/check-missed-leads',
+            route: '/api/v1/check-missed-leads',
             httpMethod: req.method,
             message: `Could not mark job ${job.id} as alerted after a successful send`,
             detail: `PATCH to jobs responded with status ${markRes.status}`,
@@ -224,7 +224,7 @@ export default async function handler(req, res) {
     // a response body. See api/_lib/errorResponse.js.
     return await sendSafeError(res, 500, err, 'Internal error while checking for missed leads.', {
       source: 'api:check-missed-leads',
-      route: '/api/check-missed-leads',
+      route: '/api/v1/check-missed-leads',
       method: req.method,
     });
   }

@@ -247,7 +247,7 @@ describe('review-job handler', () => {
     expect(loggedBody).toMatchObject({
       p_severity: 'error',
       p_source: 'api:review-job',
-      p_route: '/api/review-job',
+      p_route: '/api/v1/review-job',
       p_http_method: 'POST',
       p_message: 'The AI service is temporarily unavailable. Please try again.',
     });
