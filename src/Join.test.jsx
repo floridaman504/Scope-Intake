@@ -100,7 +100,12 @@ describe('Join (signup + invite code redemption)', () => {
 
     expect(await screen.findByText('Could not create your account. Please try again.')).toBeInTheDocument();
     expect(screen.queryByText('User already registered')).not.toBeInTheDocument();
-    expect(mockSupabase.rpc).not.toHaveBeenCalled();
+    // Not redeem_invite_code specifically -- logSafeError's own durable
+    // logging call (Tier 2 #10, src/errorMessages.js) also goes through
+    // mockSupabase.rpc now, via a fire-and-forget log_app_error call, so a
+    // blanket "rpc was never called" assertion is no longer the right
+    // check for "the invite code wasn't redeemed."
+    expect(mockSupabase.rpc).not.toHaveBeenCalledWith('redeem_invite_code', expect.anything());
     expect(screen.queryByText('DASHBOARD_STUB')).not.toBeInTheDocument();
   });
 

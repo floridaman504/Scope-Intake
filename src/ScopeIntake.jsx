@@ -172,7 +172,7 @@ accepted.push(f);
 }
 
 // Cap total attachments at 8, matching the jobs_media_count DB
-// constraint and the server-side check in api/review-job.js -- applied
+// constraint and the server-side check in api/v1/review-job.js -- applied
 // after the per-file checks above so a customer sees the specific
 // per-file reason first when both problems exist at once.
 const room = Math.max(0, MAX_FILES - media.length);
@@ -209,7 +209,7 @@ const removeMedia = (idx) => setMedia((m) => m.filter((_, i) => i !== idx));
 // Saves the job (+ uploads attachments) using an already-computed brief.
 // Split out from handleSubmit so a retry after a failed save (see below)
 // can re-run just this part -- retrying the whole handleSubmit would
-// re-call /api/review-job for a brief we already have, burning an extra
+// re-call /api/v1/review-job for a brief we already have, burning an extra
 // AI call (and extra spend against the cost guardrail) for no reason.
 const saveJob = async (brief) => {
 // Reset here (not just in handleSubmit) so a retry after a failure
@@ -347,7 +347,7 @@ if (s.id === 'contact') return null; // contact info isn't part of the job-type 
 return `${s.title}: ${answers[s.id] || 'Not provided'}`;
 }).filter(Boolean).join('\n');
 
-const response = await fetch('/api/review-job', {
+const response = await fetch('/api/v1/review-job', {
 method: 'POST',
 headers: { 'Content-Type': 'application/json' },
 body: JSON.stringify({
@@ -374,7 +374,7 @@ await saveJob(brief);
 };
 
 // Retry after a failed save, reusing the brief already computed on the
-// first attempt (aiBrief) instead of calling /api/review-job again --
+// first attempt (aiBrief) instead of calling /api/v1/review-job again --
 // see saveJob's header comment for why.
 const retrySave = async () => {
 setLoading(true);
@@ -451,7 +451,7 @@ placeholder={current.placeholder}
 rows={4}
 // Matches the jobs_context_length / jobs_access_length DB constraints
 // (docs/migrations/2026-08-15-add-input-limits.sql) and the 6000-char
-// server-side summary cap in api/review-job.js -- this is the friendly
+// server-side summary cap in api/v1/review-job.js -- this is the friendly
 // front line, not the only line: a customer just can't type past 2000
 // characters in the first place, rather than typing more and getting
 // rejected later at submit time.
